@@ -4,8 +4,6 @@
 
 This project is a component of a master’s thesis at the **University of Oslo**, exploring the potential of Large Language Models (LLMs) in improving software documentation processes.
 
----
-
 ## Key Features
 
 - **Automated Documentation**: Scans and indexes code repositories to generate rich documentation with logical links between files, functions, classes, and modules.
@@ -13,8 +11,6 @@ This project is a component of a master’s thesis at the **University of Oslo**
 - **VSCode and IntelliJ Plugin Support**: In development to enable seamless access within popular IDEs.
 - **Electron-based GUI Companion App**: A cross-platform desktop application to view and interact with generated documentation.
 - **LLM-Powered Chatbot**: Provides an interactive way to query the codebase and explore documentation.
-
----
 
 ## Getting Started
 
@@ -66,8 +62,6 @@ poetry run uvicorn docstra.server:app --reload
 
 Access the API documentation at `http://127.0.0.1:8000/docs` (Swagger UI).
 
----
-
 ## Usage
 
 Docstra can process entire repositories or selected folders and files. It will extract structured metadata for each code component, allowing cross-referenced links for easy navigation and searchability.
@@ -82,14 +76,10 @@ poetry run docstra query "How does authentication work?"
 
 With the FastAPI server, you can send `POST` requests to `/query` with your question in the payload for direct querying from other applications.
 
----
-
 ## Plugin and GUI Support
 
 - **VSCode and IntelliJ Plugins** (in development): Access Docstra documentation within the editor for a seamless development experience.
 - **Electron-based Desktop App** (coming soon): A graphical interface for non-technical users to explore codebase documentation.
-
----
 
 ### Roadmap
 
@@ -97,20 +87,14 @@ With the FastAPI server, you can send `POST` requests to `/query` with your ques
 - Expand plugin support for major IDEs
 - Develop Electron-based desktop application
 
----
-
 ## License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
----
 
 ## Contact
 
 For questions or feedback, please reach out to the project team at the **University of Oslo**. This project is an academic exploration into LLM-based developer tools aimed at improving the efficiency and accessibility of code documentation.
 
 **Project Repository**: [https://github.uio.no/docstra/docstra](https://github.uio.no/docstra/docstra)
-
---- 
 
 This README provides a quick start guide to get up and running with Docstra, along with a look at the upcoming features and development goals of the project. Docstra is continually evolving to meet the needs of developers, researchers, and educators in the field of software engineering.
