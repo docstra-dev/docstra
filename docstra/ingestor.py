@@ -2,6 +2,7 @@ import ast
 import hashlib
 import json
 import os
+from os import PathLike
 import time
 
 import tiktoken

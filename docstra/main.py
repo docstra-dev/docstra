@@ -1,5 +1,6 @@
 import getpass
 import os
+from os import PathLike
 from pathlib import Path
 
 from docstra.ingestor import DocstraIngestor
@@ -7,7 +8,8 @@ from docstra.llm_engine import DocstraLLMEngine
 from docstra.vectorstore import DocstraVectorstore
 from dotenv import load_dotenv
 
-load_dotenv(Path(".docstra/.env"))  # This loads variables from .env into environment
+env_path = Path(".docstra/.env")
+load_dotenv(env_path)  # This loads variables from .env into environment
 openai_api_key = os.environ.get("OPENAI_API_KEY")
 
 if not openai_api_key:
@@ -40,13 +42,13 @@ class Docstra:
 
 def get_docstra_path(repo_path: str | PathLike[str]) -> Path:
     # Define the .docstra directory in the repository
-    docstra_dir = os.path.join(repo_path, ".docstra")
+    docstra_dir = Path(repo_path) / ".docstra"
 
     # Check if it exists; if not, create it
-    pathlib.Path(docstra_dir).mkdir(parents=True, exist_ok=True)
+    Path(docstra_dir).mkdir(parents=True, exist_ok=True)
 
     return docstra_dir
 
 
-def generateProjectPath(repoPath: str | PathLike[str]) -> Path:
-    return Path(".docstra/projects/", repoPath)
+def generate_project_path(repoPath: str | PathLike[str]) -> Path:
+    return Path(".docstra/projects/") / repoPath

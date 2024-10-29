@@ -37,7 +37,7 @@ def ingest(repo_path, db_dir):
 @click.option('--db-dir', default="./db", help="Directory where the vector database is stored.")
 def query(question, with_sources, repo_path, db_dir):
     """Query the repository for answers."""
-    docstra = Docstra(Path(repo_path), db_dir=db_dir)
+    docstra = Docstra(repo_path, db_dir=db_dir)
     if not question:
         question = click.prompt('Enter your query')
     click.echo(f"Querying repository: {question}")
@@ -50,7 +50,7 @@ def interactive_mode(with_sources=False):
     """Interactive loop for ingesting repositories and querying."""
     repo_path = click.prompt('Enter the repository path for ingestion', default=Path.cwd())
     db_dir = click.prompt('Enter the vectorstore directory (or press Enter for default ./db)', default='./db')
-    docstra = Docstra(Path(repo_path), db_dir=db_dir)
+    docstra = Docstra(repo_path, db_dir=db_dir)
 
     click.echo(f"Starting ingestion for repository: {repo_path}")
     docstra.ingest_repository()
