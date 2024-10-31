@@ -1,7 +1,6 @@
 from langchain.chains.combine_documents import create_stuff_documents_chain
 from langchain.chains.retrieval import create_retrieval_chain
 from langchain_core.prompts import ChatPromptTemplate
-
 from langchain_openai import ChatOpenAI
 
 DEFAULT_SYSTEM_PROMPT = (
@@ -14,19 +13,28 @@ DEFAULT_SYSTEM_PROMPT = (
     "{context}"
 )
 
+def initialize_llm(system_prompt=DEFAULT_SYSTEM_PROMPT):
+    """Initializes the ChatOpenAI model and sets up the prompt template."""
+    llm = ChatOpenAI()
+    prompt = ChatPromptTemplate.from_messages(
+        [
+            ("system", system_prompt),
+            ("human", "{input}"),
+        ]
+    )
+    return llm, prompt
 
-class DocstraLLMEngine:
-    def __init__(self, retriever, system_prompt=DEFAULT_SYSTEM_PROMPT):
-        self.llm = ChatOpenAI()
-        self.system_prompt = system_prompt
-        self.prompt = ChatPromptTemplate.from_messages(
-            [
-                ("system", self.system_prompt),
-                ("human", "{input}"),
-            ]
-        )
-        self.question_answer_chain = create_stuff_documents_chain(self.llm, self.prompt)
-        self.rag_chain = create_retrieval_chain(retriever, self.question_answer_chain)
+def create_question_answer_chain(llm, prompt):
+    """Creates a question-answer chain using the given LLM and prompt template."""
+    return create_stuff_documents_chain(llm, prompt)
 
-    def run_query(self, question):
-        return self.rag_chain.invoke({"input": question})
+def create_rag_chain(retriever, question_answer_chain):
+    """Creates a retrieval-augmented generation chain."""
+    return create_retrieval_chain(retriever, question_answer_chain)
+
+def run_query(retriever, question, system_prompt=DEFAULT_SYSTEM_PROMPT):
+    """Runs a query using a retrieval-augmented generation chain."""
+    llm, prompt = initialize_llm(system_prompt)
+    question_answer_chain = create_question_answer_chain(llm, prompt)
+    rag_chain = create_rag_chain(retriever, question_answer_chain)
+    return rag_chain.invoke({"input": question})
