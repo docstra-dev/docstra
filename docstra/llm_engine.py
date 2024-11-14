@@ -4,10 +4,10 @@ from langchain_core.prompts import ChatPromptTemplate
 from langchain_openai import ChatOpenAI
 
 DEFAULT_SYSTEM_PROMPT = (
-    "You are an assistant for question-answering tasks. "
-    "Use the following pieces of retrieved context to answer "
+    "You are an expert software developer with detailed knowledge about a codebase. "
+    "Use the following pieces of context to answer "
     "the question. If you don't know the answer, say that you "
-    "don't know. Use three sentences maximum and keep the "
+    "don't know. Keep the "
     "answer concise."
     "\n\n"
     "{context}"
@@ -15,7 +15,9 @@ DEFAULT_SYSTEM_PROMPT = (
 
 def initialize_llm(system_prompt=DEFAULT_SYSTEM_PROMPT):
     """Initializes the ChatOpenAI model and sets up the prompt template."""
-    llm = ChatOpenAI()
+    llm = ChatOpenAI(
+        temperature=0.0,
+    )
     prompt = ChatPromptTemplate.from_messages(
         [
             ("system", system_prompt),
