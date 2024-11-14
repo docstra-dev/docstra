@@ -171,7 +171,7 @@ def process_file(file_path: str, file_hashes: dict) -> list[Document] | None:
 # Ingest Repository with Token Count Management
 def ingest_repo(
         repo_path: str | PathLike[str],
-        hash_file: str | PathLike[str] = "./hashes.json",
+        hash_file: str | PathLike[str] = "./.docstra/hashes.json",
         max_tokens_per_minute: int = 60000,
         token_encoding_name: str = "cl100k_base"
 ) -> list[Document]:

@@ -25,9 +25,7 @@ tree-sitter-html = "^0.23.2"
 langchain-text-splitters = "^0.3.2"
 
 [tool.poetry.scripts]
-docstra = "docstra.cli:cli"
-server = "docstra.server:main"
-
+docstra = "docstra.cli:main"
 
 [build-system]
 requires = ["poetry-core"]

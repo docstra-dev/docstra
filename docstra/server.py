@@ -81,7 +81,12 @@ async def query_repository(request: QueryRequest):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error during query: {str(e)}")
 
+def run_server(host: str = "127.0.0.1", port: int = 8000):
+    uvicorn.run(app, host=host, port=port)
+
+def main():
+    run_server()
 
 ### Running the App ###
 if __name__ == "__main__":
-    uvicorn.run(app, host="127.0.0.1", port=8000)
+    main()
