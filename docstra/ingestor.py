@@ -197,7 +197,7 @@ def ingest_repo(
 
                         if total_tokens > max_tokens_per_minute:
                             logger.warning(f"Throttling to avoid exceeding token limit. Sleeping...")
-                            time.sleep(60)
+                            time.sleep(60) # TODO: Implement randomized throttling, e.g. exponential increase
                             total_tokens = token_count
 
                         documents.append(doc)

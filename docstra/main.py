@@ -35,6 +35,7 @@ class Docstra:
 
         # Ensure the OpenAI API key is available
         openai_api_key = get_openai_api_key(repo_path)
+
         if not openai_api_key:
             openai_api_key = getpass.getpass("Please enter your OpenAI API key: ")
             set_openai_api_key(repo_path, openai_api_key)

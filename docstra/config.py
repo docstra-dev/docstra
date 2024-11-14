@@ -15,10 +15,10 @@ DEFAULT_PROJECT_CONFIG = {
     }
 }
 
-CORE_CONFIG_FILE = Path.home() / ".docstra_core_config.json"
+CORE_CONFIG_FILE = Path.home() / ".config.json"
 DEFAULT_CORE_CONFIG = {
-    "app_data_dir": str(Path.home() / ".docstra_data"),
-    "default_db_dir": str(Path.home() / ".docstra_data/db"),
+    "app_data_dir": str(Path.home() / ".docstra"),
+    "default_db_dir": ".docstra/db",
     "openai_model": "text-embedding-3-small"
 }
 

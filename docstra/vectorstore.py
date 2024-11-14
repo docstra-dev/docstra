@@ -6,7 +6,7 @@ from langchain_chroma import Chroma
 from langchain_openai import OpenAIEmbeddings
 
 def initialize_vectorstore(
-    db_dir: str | PathLike[str] = "./db",
+    db_dir: str | PathLike[str] = "./.docstra/db",
     collection_name: str = "codebase",
     embeddings_model: str = "text-embedding-3-small"
 ):
@@ -14,7 +14,6 @@ def initialize_vectorstore(
     client = chromadb.PersistentClient(path=db_dir)
     embeddings = OpenAIEmbeddings(model=embeddings_model)
     ef = create_langchain_embedding(embeddings)
-    collection = client.get_or_create_collection(collection_name)
     vectorstore = Chroma(
         client=client,
         collection_name=collection_name,
