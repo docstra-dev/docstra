@@ -47,8 +47,8 @@ def cli(ctx, verbose, quiet):
         logger.setLevel(logging.WARNING)
 
     if ctx.invoked_subcommand is None:
-        click.secho(header_art, fg=202)
-        click.secho("Welcome to the Docstra CLI!", fg=202, bold=True)
+        click.secho(header_art, fg="bright_yellow")
+        click.secho("Welcome to the Docstra CLI!", fg="bright_yellow", bold=True)
         click.echo(ctx.get_help())
 
 
@@ -63,7 +63,7 @@ def init(repo, api_key, embeddings_model, chat_model, max_tokens):
     repo = Path(repo).resolve()
     docstra_dir = repo / ".docstra"
 
-    click.secho(header_art, fg=202)
+    click.secho(header_art, fg="bright_yellow")
 
     if not docstra_dir.exists():
         docstra_dir.mkdir(parents=True)
@@ -86,17 +86,17 @@ def init(repo, api_key, embeddings_model, chat_model, max_tokens):
             json.dump(new_repo_config, f, indent=4)
 
     if not api_key and os.environ.get("OPENAI_API_KEY") is None:
-        click.secho("Docstra needs an OpenAI API key to function. It will be stored in `.docstra/.env`.", fg=202)
+        click.secho("Docstra needs an OpenAI API key to function. It will be stored in `.docstra/.env`.", fg="bright_yellow")
         api_key = click.prompt(click.style("Enter your OpenAI API key: ", bold=True), type=str)
 
         env_path = docstra_dir / ".env"
         with open(env_path, "a") as f:
             f.write(f"OPENAI_API_KEY={api_key}\n")
 
-        click.secho("OpenAI API key saved successfully.", fg="green")
+        click.secho("OpenAI API key saved successfully.", fg="bright_green")
 
     click.secho("Docstra initialization complete. To update your settings, run `docstra config` later.")
-    click.secho("You can now start ingesting the repository using `docstra ingest`.", fg=202)
+    click.secho("You can now start ingesting the repository using `docstra ingest`.", fg="bright_yellow")
 
 
 @cli.command()
@@ -126,7 +126,7 @@ def query(question, repo, with_sources, raw_output):
     docstra = Docstra(repo)
 
     if not question:
-        question = click.prompt(click.style('Enter your query', bold=True, fg=202), type=str)
+        question = click.prompt(click.style('Enter your query', bold=True, fg="bright_yellow"), type=str)
 
     result = docstra.query_repository(question)
 
@@ -136,16 +136,16 @@ def query(question, repo, with_sources, raw_output):
 
     if with_sources:
         if "answer" in result:
-            click.secho(result["answer"], fg=154, bold=True)
+            click.secho(result["answer"], fg="bright_green", bold=True)
 
         if len(result["context"]) == 0:
-            click.secho("No sources were found.", fg="red")
+            click.secho("No sources were found.", fg="bright_red")
             return
 
-        click.secho(f"{'-' * 20} Sources {'-' * 20}", fg=255)
+        click.secho(f"{'-' * 20} Sources {'-' * 20}", fg="bright_white")
 
         for source in result["context"]:
-            click.secho(f"Source: {source}", fg=255)
+            click.secho(f"Source: {source}", fg="bright_white")
         return
 
     if "answer" in result:
@@ -163,12 +163,12 @@ def chat(repo, with_sources):
     docstra = Docstra(repo)
 
     while True:
-        question = click.prompt(click.style("Enter your query (or type 'exit' to quit)", bold=True, fg=202))
+        question = click.prompt(click.style("Enter your query (or type 'exit' to quit)", bold=True, fg="bright_yellow"))
         if question.lower() == 'exit':
             break
         result = docstra.query_repository(question)
         formatted_output = result if with_sources else result["answer"]
-        click.secho(formatted_output, fg=154, bold=True)
+        click.secho(formatted_output, fg="bright_green", bold=True)
 
 @cli.command()
 @click.option("--port", "-p", default=8000, help="Port to run the FastAPI server on.")
