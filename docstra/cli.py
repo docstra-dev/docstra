@@ -136,7 +136,7 @@ def query(question, repo, with_sources, raw_output):
 
     if with_sources:
         if "answer" in result:
-            click.secho(result["answer"], fg="bright_green", bold=True)
+            click.secho(result["answer"])
 
         if len(result["context"]) == 0:
             click.secho("No sources were found.", fg="bright_red")
@@ -145,7 +145,10 @@ def query(question, repo, with_sources, raw_output):
         click.secho(f"{'-' * 20} Sources {'-' * 20}", fg="bright_white")
 
         for source in result["context"]:
-            click.secho(f"Source: {source}", fg="bright_white")
+            source_file = source.metadata["file_path"]
+            source_start_line = source.metadata["start_line"]
+            source_end_line = source.metadata["end_line"]
+            click.secho(f"{source_file}, L{click.style(f"#{source_start_line}", fg="bright_red")}-L{click.style(f"#{source_end_line}", fg="cyan")}", fg="bright_white")
         return
 
     if "answer" in result:
@@ -164,11 +167,32 @@ def chat(repo, with_sources):
 
     while True:
         question = click.prompt(click.style("Enter your query (or type 'exit' to quit)", bold=True, fg="bright_yellow"))
+
         if question.lower() == 'exit':
             break
+
         result = docstra.query_repository(question)
-        formatted_output = result if with_sources else result["answer"]
-        click.secho(formatted_output, fg="bright_green", bold=True)
+
+        if with_sources:
+            if "answer" in result:
+                click.secho(result["answer"])
+
+            if len(result["context"]) == 0:
+                click.secho("No sources were found.", fg="bright_red")
+                return
+
+            click.secho(f"{'-' * 20} Sources {'-' * 20}", fg="bright_white")
+
+            for source in result["context"]:
+                source_file = source.metadata["file_path"]
+                source_start_line = source.metadata["start_line"]
+                source_end_line = source.metadata["end_line"]
+                click.secho(
+                    f"{source_file}, L{click.style(f"#{source_start_line}", fg="bright_red")}-L{click.style(f"#{source_end_line}", fg="cyan")}",
+                    fg="bright_white")
+        else:
+            if "answer" in result:
+                click.echo(result["answer"])
 
 @cli.command()
 @click.option("--port", "-p", default=8000, help="Port to run the FastAPI server on.")
