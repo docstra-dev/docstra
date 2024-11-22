@@ -1,71 +1,47 @@
-import hashlib
-import json
 import os
 import time
-from os import PathLike
-from tqdm import tqdm
-from tree_sitter import Parser, Node, Language
+import json
+from pathlib import Path
+from typing import List, Optional
+
 import tiktoken
+from tqdm import tqdm
+
+from dotenv import load_dotenv
+from langchain_community.document_loaders.generic import GenericLoader
+from langchain_community.document_loaders.parsers import LanguageParser
+from langchain_text_splitters import MarkdownHeaderTextSplitter
 from langchain_core.documents import Document
+from langchain_text_splitters import RecursiveCharacterTextSplitter
+import hashlib
+
 from docstra.logger import logger
-from langchain_text_splitters import RecursiveCharacterTextSplitter, Language as TextSplitterLanguage
 
-from docstra.vectorstore import initialize_vectorstore
+# Load environment variables
+docstra_path = Path("./.docstra")
+env_path = docstra_path / Path(".env")
+load_dotenv(env_path)
 
-# Constants for directory and file exclusions
+# Supported file extensions
+SUPPORTED_CODE_FILE_EXTENSIONS = [
+    ".c", ".cpp", ".cs", ".cbl", ".ex", ".go", ".java", ".js",
+    ".kt", ".lua", ".pl", ".py", ".rb", ".rs", ".scala", ".ts"
+]
+SUPPORTED_MARKUP_FILE_EXTENSIONS = [".md", ".html", ".yaml", ".yml"]
+
+# Directories and files to exclude
 DEFAULT_DIRS_TO_EXCLUDE = {".git", ".venv", "node_modules", "__pycache__", "dist", "build"}
 DEFAULT_FILES_TO_EXCLUDE = {".env", "Pipfile.lock", "poetry.lock"}
-DEFAULT_FILE_EXTENSIONS_TO_INCLUDE = {".py", ".json", ".yaml", ".sh"}
 
-# Initialize Language Parsers
-import tree_sitter_python as tspython
-import tree_sitter_json as tsjson
-import tree_sitter_html as tshtml
-import tree_sitter_typescript as tstypescript
-import tree_sitter_javascript as tsjavascript
-import tree_sitter_markdown as tsmarkdown
-
-LANGUAGES = {
-    "python": Language(tspython.language()),
-    "json": Language(tsjson.language()),
-    "html": Language(tshtml.language()),
-    "typescript": Language(tstypescript.language_typescript()),
-    "javascript": Language(tsjavascript.language()),
-    "markdown": Language(tsmarkdown.language()),
-}
-
-PARSERS = {
-    ext: Parser(LANGUAGES[ext]) for ext in LANGUAGES.keys()
-}
-
-FILE_EXTENSIONS_TO_LANGUAGES = {
-    ".py": "python",
-    ".json": "json",
-    ".html": "html",
-    ".ts": "typescript",
-    ".js": "javascript",
-    ".md": "markdown",
-}
-
-# Mapping Tree-sitter languages to LangChain's Language enum
-TREE_SITTER_TO_LANGCHAIN_LANGUAGE = {
-    "python": TextSplitterLanguage.PYTHON,
-    "json": TextSplitterLanguage.JS,
-    "html": TextSplitterLanguage.HTML,
-    "typescript": TextSplitterLanguage.TS,
-    "javascript": TextSplitterLanguage.JS,
-    "markdown": TextSplitterLanguage.MARKDOWN,
-}
-
-# Utility Functions for File Hashing and Loading
-def load_file_hashes(hash_file: str | PathLike[str]) -> dict:
+# File hash utilities
+def load_file_hashes(hash_file: str) -> dict:
     if os.path.exists(hash_file):
         with open(hash_file, "r") as f:
             return json.load(f)
     return {}
 
 
-def save_file_hashes(hash_file: str | PathLike[str], file_hashes: dict):
+def save_file_hashes(hash_file: str, file_hashes: dict):
     with open(hash_file, "w") as f:
         json.dump(file_hashes, f)
 
@@ -74,140 +50,158 @@ def generate_file_hash(file_path: str) -> str:
     with open(file_path, "rb") as f:
         return hashlib.md5(f.read()).hexdigest()
 
-
 # Token Count Calculation
 def calculate_token_count(content: str, token_encoding_name: str = "cl100k_base") -> int:
     encoding = tiktoken.get_encoding(token_encoding_name)
     return len(encoding.encode(content))
 
 
-# Tree-sitter-based Chunking
-def chunk_node(node: Node, text: str, file_path: str, file_hash: str, MAX_CHARS: int = 1500) -> list[Document]:
-    documents = []
-    current_chunk = ""
-    metadata_template = {
-        "file_path": file_path,
-        "file_hash": file_hash,
-        "node_type": node.type,
-        "start_byte": node.start_byte,
-        "end_byte": node.end_byte,
-        "start_line": node.start_point[0] + 1,
-        "end_line": node.end_point[0] + 1,
-    }
-
-    for child in node.children:
-        chunk_size = child.end_byte - child.start_byte
-        child_text = text[child.start_byte:child.end_byte]
-
-        if chunk_size > MAX_CHARS:
-            documents.extend(chunk_node(child, text, file_path, file_hash, MAX_CHARS))
-        elif len(current_chunk) + chunk_size > MAX_CHARS:
-            documents.append(Document(page_content=current_chunk, metadata=metadata_template))
-            current_chunk = child_text
-        else:
-            current_chunk += child_text
-
-    if current_chunk:
-        documents.append(Document(page_content=current_chunk, metadata=metadata_template))
-
-    return documents
+# Document loaders
+def load_code_files(path: str) -> List[Document]:
+    loader = GenericLoader.from_filesystem(
+        path,
+        glob="*",
+        suffixes=SUPPORTED_CODE_FILE_EXTENSIONS,
+        parser=LanguageParser(),
+    )
+    return loader.load()
 
 
-def chunk(text: str, language: str, file_path: str, file_hash: str, MAX_CHARS: int = 1500) -> list[Document]:
-    parser = PARSERS.get(language)
-    tree = parser.parse(bytes(text, "utf-8"))
+def load_markup_files(file_path: str) -> List[Document]:
+    file_extension = os.path.splitext(file_path)[1]
+    with open(file_path, "r", encoding="utf-8") as f:
+        content = f.read()
 
-    if not tree.root_node.children or tree.root_node.children[0].type == "ERROR":
-        logger.warning(f"Could not parse chunk with parser {language}")
+    if file_extension == ".md":
+        splitter = MarkdownHeaderTextSplitter()
+        return splitter.create_documents([content])
 
-        # Get the corresponding LangChain Language enum for the given language
-        langchain_language = TREE_SITTER_TO_LANGCHAIN_LANGUAGE.get(language)
-        if langchain_language is None:
-            logger.error(f"No LangChain language mapping found for Tree-sitter language '{language}'")
-            return []
-
-        # Fallback: Naive splitting in case of parsing failure
-        splitter = RecursiveCharacterTextSplitter.from_language(
-            language=langchain_language,
-            chunk_size=MAX_CHARS,
-            chunk_overlap=0
-        )
-        return splitter.create_documents([text])
-
-    return chunk_node(tree.root_node, text, file_path, file_hash, MAX_CHARS)
+    splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=100)
+    return splitter.create_documents([content])
 
 
-# Process Files with Tree-sitter Chunking
-def process_file(file_path: str, file_hashes: dict) -> list[Document] | None:
+def process_file(file_path: str, file_hashes: dict) -> Optional[List[Document]]:
     current_hash = generate_file_hash(file_path)
 
+    # Skip unchanged files
     if file_hashes.get(file_path) == current_hash:
-        logger.info(f"Skipping {file_path}, no changes detected.")
         return None
 
-    with open(file_path, "r", encoding="utf-8") as f:
-        file_content = f.read()
+    documents = []
 
-    file_metadata = {
-        "file_path": file_path,
-        "file_hash": current_hash,
-        "file_size": os.path.getsize(file_path),
-        "file_extension": os.path.splitext(file_path)[1],
-        "file_name": os.path.basename(file_path),
-        "line_count": file_content.count("\n") + 1,
-        "last_modified": os.path.getmtime(file_path),
-    }
+    # Load source file content
+    try:
+        # Attempt to read the file as UTF-8
+        with open(file_path, "r", encoding="utf-8") as f:
+            source_content = f.read()
+    except UnicodeDecodeError:
+        logger.warning(f"Skipping non-text or non-UTF-8 file: {file_path}")
+        return None
 
-    language = FILE_EXTENSIONS_TO_LANGUAGES[file_metadata["file_extension"]]
-    documents = chunk(file_content, language, file_path, current_hash)
+    file_extension = os.path.splitext(file_path)[1]
+    if file_extension in SUPPORTED_CODE_FILE_EXTENSIONS:
+        # Use GenericLoader to get documents (chunks)
+        loader = GenericLoader.from_filesystem(
+            os.path.dirname(file_path),
+            glob=os.path.basename(file_path),
+            suffixes=[file_extension],
+            parser=LanguageParser(),
+        )
+        raw_documents = loader.load()
 
-    for doc in documents:
-        doc.metadata.update(file_metadata)
+        # Match each chunk with the source file to determine line numbers
+        source_lines = source_content.splitlines()
+        for doc in raw_documents:
+            chunk_lines = doc.page_content.splitlines()
+            start_line, end_line = find_chunk_line_numbers(source_lines, chunk_lines)
 
-    file_hashes[file_path] = current_hash
-    return documents
+            metadata_template = {
+                "source": file_path,
+                "file_path": file_path,
+                "file_hash": current_hash,
+                "start_line": start_line,
+                "end_line": end_line,
+                "line_count": len(chunk_lines),
+                "ingestion_timestamp": time.time(),
+            }
+            doc.metadata.update(metadata_template)
+            documents.append(doc)
+
+    elif file_extension in SUPPORTED_MARKUP_FILE_EXTENSIONS:
+        # Use appropriate parser for markup files
+        documents = load_markup_files(file_path)
+
+    return documents if documents else None
 
 
-# Ingest Repository with Token Count Management
+def find_chunk_line_numbers(source_lines: List[str], chunk_lines: List[str]) -> (int, int):
+    """
+    Finds the start and end line numbers of a chunk in the source file.
+    Args:
+        source_lines: List of lines in the source file.
+        chunk_lines: List of lines in the chunk.
+    Returns:
+        A tuple of (start_line, end_line).
+    """
+    start_line, end_line = -1, -1
+    for i in range(len(source_lines)):
+        if source_lines[i:i + len(chunk_lines)] == chunk_lines:
+            start_line = i + 1
+            end_line = i + len(chunk_lines)
+            break
+    return start_line, end_line
+
+
+# Main repository ingestion
 def ingest_repo(
-        repo_path: str | PathLike[str],
-        hash_file: str | PathLike[str] = "./.docstra/hashes.json",
+        repo_path: str,
+        hash_file: str = "./.docstra/hashes.json",
         max_tokens_per_minute: int = 60000,
         token_encoding_name: str = "cl100k_base"
-) -> list[Document]:
+) -> List[Document]:
     file_hashes = load_file_hashes(hash_file)
     documents = []
     total_tokens = 0
-    total_files = sum([len(files) for _, _, files in os.walk(repo_path)])
+    total_files = sum(len(files) for _, _, files in os.walk(repo_path))
+    start_time = time.time()
 
     with tqdm(total=total_files, desc="Processing files", position=0, leave=True) as pbar:
         for root, dirs, files in os.walk(repo_path):
             dirs[:] = [d for d in dirs if d not in DEFAULT_DIRS_TO_EXCLUDE]
             for file in files:
-                if file in DEFAULT_FILES_TO_EXCLUDE or not any(
-                        file.endswith(ext) for ext in DEFAULT_FILE_EXTENSIONS_TO_INCLUDE):
+                if file in DEFAULT_FILES_TO_EXCLUDE:
                     continue
+
                 file_path = os.path.join(root, file)
                 file_docs = process_file(file_path, file_hashes)
 
                 if file_docs:
                     for doc in file_docs:
+                        doc.metadata["file_path"] = file_path
+
+                        # Calculate token count and throttle if necessary
                         token_count = calculate_token_count(doc.page_content, token_encoding_name)
                         total_tokens += token_count
 
+                        # Check if the token limit has been exceeded
+                        elapsed_time = time.time() - start_time
                         if total_tokens > max_tokens_per_minute:
-                            logger.warning(f"Throttling to avoid exceeding token limit. Sleeping...")
-                            time.sleep(60) # TODO: Implement randomized throttling, e.g. exponential increase
-                            total_tokens = token_count
-
-                        documents.append(doc)
-                    pbar.update(1)
+                            sleep_time = max(0, 60 - elapsed_time)
+                            logger.warning(
+                                f"Throttling to avoid exceeding token limit. Sleeping for {sleep_time:.2f} seconds...")
+                            time.sleep(sleep_time)
+                            total_tokens = token_count  # Reset token count after sleeping
+                            start_time = time.time()  # Reset start time
+                    documents.extend(file_docs)
+                    file_hashes[file_path] = generate_file_hash(file_path)
+                pbar.update(1)
 
     save_file_hashes(hash_file, file_hashes)
-    logger.info(f"{len(documents)} documents were created...")
     return documents
 
+
 if __name__ == "__main__":
-    # Ingest repository and add documents to vectorstore
-    documents = ingest_repo(repo_path=".")
-    print(documents)
+    # Ingest repository and print results
+    repo_path = "./"
+    documents = ingest_repo(repo_path)
+    print(f"Ingested {len(documents)} documents.")

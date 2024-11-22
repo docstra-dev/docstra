@@ -62,13 +62,28 @@ def init(repo, api_key, embeddings_model, chat_model, max_tokens):
     """Initialize repository-specific configuration for Docstra."""
     repo = Path(repo).resolve()
     docstra_dir = repo / ".docstra"
+    env_path = docstra_dir / ".env"
 
     click.secho(header_art, fg="bright_yellow")
 
     if not docstra_dir.exists():
-        docstra_dir.mkdir(parents=True)
-    else:
-        load_dotenv(docstra_dir / ".env")
+        docstra_dir.mkdir(parents=True, exist_ok=True)
+
+    if not env_path.exists():
+        env_path.touch()
+        if api_key:
+            with open(env_path, "a") as f:
+                f.write(f"OPENAI_API_KEY={api_key}\n")
+        else:
+            click.secho("Docstra needs an OpenAI API key to function. It will be stored in `.docstra/.env`.",
+                        fg="bright_yellow")
+            api_key = click.prompt(click.style("Enter your OpenAI API key", bold=True), type=str)
+
+            with open(env_path, "a") as f:
+                f.write(f"OPENAI_API_KEY={api_key}\n")
+        click.secho("OpenAI API key saved successfully.", fg="bright_green")
+
+    load_dotenv(env_path)
 
     # Create repository-specific config file if it doesn’t exist
     repo_config_path = docstra_dir / REPO_CONFIG_FILENAME
@@ -85,15 +100,6 @@ def init(repo, api_key, embeddings_model, chat_model, max_tokens):
         with open(repo_config_path, "w") as f:
             json.dump(new_repo_config, f, indent=4)
 
-    if not api_key and os.environ.get("OPENAI_API_KEY") is None:
-        click.secho("Docstra needs an OpenAI API key to function. It will be stored in `.docstra/.env`.", fg="bright_yellow")
-        api_key = click.prompt(click.style("Enter your OpenAI API key: ", bold=True), type=str)
-
-        env_path = docstra_dir / ".env"
-        with open(env_path, "a") as f:
-            f.write(f"OPENAI_API_KEY={api_key}\n")
-
-        click.secho("OpenAI API key saved successfully.", fg="bright_green")
 
     click.secho("Docstra initialization complete. To update your settings, run `docstra config` later.")
     click.secho("You can now start ingesting the repository using `docstra ingest`.", fg="bright_yellow")
