@@ -39,9 +39,24 @@ def create_rag_chain(retriever, question_answer_chain):
     """Creates a retrieval-augmented generation chain."""
     return create_retrieval_chain(retriever, question_answer_chain)
 
-def run_query(retriever, question, system_prompt=DEFAULT_SYSTEM_PROMPT, document_prompt=DEFAULT_DOCUMENT_PROMPT):
-    """Runs a query using a retrieval-augmented generation chain."""
+
+def run_query(retriever, question, session_history=None, system_prompt=DEFAULT_SYSTEM_PROMPT,
+              document_prompt=DEFAULT_DOCUMENT_PROMPT):
+    """Runs a query using a retrieval-augmented generation chain with chat history."""
     llm, prompt, document_prompt = initialize_llm(system_prompt, document_prompt)
+
+    # Combine past messages into a formatted conversation history
+    conversation_history = ""
+    if session_history:
+        for msg in session_history:
+            conversation_history += f"User: {msg['question']}\nDocstra: {msg['response']}\n"
+
+    # Update prompt to include chat history
+    full_input = f"{conversation_history}\nUser: {question}"
+
+    # Run query with history
     question_answer_chain = create_question_answer_chain(llm, prompt, document_prompt)
     rag_chain = create_rag_chain(retriever, question_answer_chain)
-    return rag_chain.invoke({"input": question})
+
+    return rag_chain.invoke({"input": full_input})
+

@@ -5,7 +5,7 @@ import time
 
 class ChatDB:
     def __init__(self):
-        """Initialize the chat database inside .docstra/db/."""
+        # Initialize the chat database inside .docstra/db/.
         self.base_dir = Path(__file__).resolve().parent / ".docstra"
         self.db_dir = self.base_dir / "db"
         self.db_path = self.db_dir / "chat_sessions.db"
@@ -17,7 +17,7 @@ class ChatDB:
         self._initialize_db()
 
     def _initialize_db(self):
-        """Create tables if they don't exist."""
+        # Create tables if they don't exist.
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
 
@@ -33,7 +33,7 @@ class ChatDB:
         conn.close()
 
     def create_session(self, session_name=None):
-        """Create a new chat session with a custom name and return its ID."""
+        # Create a new chat session with a custom name and return its ID.
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
 
@@ -47,7 +47,7 @@ class ChatDB:
         return session_id, session_name  # Return session ID and name
 
     def save_message(self, session_id, question, response):
-        """Save a message to the session."""
+        # Save a message to the session.
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
 
@@ -62,7 +62,7 @@ class ChatDB:
         conn.close()
 
     def list_sessions(self):
-        """Retrieve all stored chat sessions."""
+        # Retrieve all stored chat sessions.
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
         cursor.execute("SELECT id, session_name, created_at FROM chat_sessions ORDER BY created_at DESC")
@@ -71,7 +71,7 @@ class ChatDB:
         return [{"id": s[0], "name": s[1], "created_at": s[2]} for s in sessions]
 
     def get_chat_history(self, session_id):
-        """Retrieve chat history for a given session."""
+        # Retrieve chat history for a given session.
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
         cursor.execute("SELECT messages FROM chat_sessions WHERE id = ?", (session_id,))
@@ -82,7 +82,7 @@ class ChatDB:
         return None
 
     def get_session_id_by_name(self, session_name):
-        """Retrieve a session ID by its name."""
+        # Retrieve a session ID by its name.
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
         cursor.execute("SELECT id FROM chat_sessions WHERE session_name = ?", (session_name,))

@@ -45,7 +45,7 @@ header_art = """
 @click.option('--verbose', '-v', is_flag=True, help="Enable all logging.")
 @click.option("--quiet", "-q", is_flag=True, help="Disable all logging.")
 def cli(ctx, verbose, quiet):
-    """Docstra CLI tool for managing repositories and querying codebases."""
+    # Docstra CLI tool for managing repositories and querying codebases.
 
     if verbose:
         logger.setLevel(logging.DEBUG)
@@ -67,7 +67,7 @@ def cli(ctx, verbose, quiet):
 @click.option("--chat-model", "-cm", default="gpt-4o-mini", help="OpenAI model to use for chat.")
 @click.option("--max-tokens", "-t", default=60000, help="Maximum tokens per minute for OpenAI API throttling.")
 def init(repo, api_key, embeddings_model, chat_model, max_tokens):
-    """Initialize repository-specific configuration for Docstra."""
+    # Initialize repository-specific configuration for Docstra.
     repo = Path(repo).resolve()
     docstra_dir = repo / ".docstra"
     env_path = docstra_dir / ".env"
@@ -116,7 +116,7 @@ def init(repo, api_key, embeddings_model, chat_model, max_tokens):
 @cli.command()
 @click.option("--repo", "-rp", default=".", help="Path to the repository to initialize Docstra in.")
 def ingest(repo):
-    """Ingest a repository to extract metadata and store embeddings."""
+    # Ingest a repository to extract metadata and store embeddings
 
     repo = Path(repo).resolve()
     docstra = Docstra(repo)
@@ -171,7 +171,7 @@ def query(question, repo, with_sources, raw_output):
 
 @cli.command()
 def list_sessions():
-    """List all past chat sessions."""
+    # List all previous chat sessions
     sessions = chat_db.get_all_sessions()
     if not sessions:
         click.secho("No chat sessions found.", fg="yellow")
@@ -183,7 +183,7 @@ def list_sessions():
 @cli.command()
 @click.argument("session_id", type=int)
 def show_session(session_id):
-    """Retrieve and display chat history."""
+    # Retrieve and show chat history
     history = chat_db.get_session_history(session_id)
     if not history:
         click.secho(f"No history found for session {session_id}.", fg="red")
@@ -199,7 +199,7 @@ def show_session(session_id):
 @click.option("--repo", "-rp", default=".", help="Path to the repository to initialize Docstra in.")
 @click.option('--with-sources', is_flag=True, default=False, help="Include sources in the response.")
 def chat(repo, with_sources):
-    """Interactive loop for querying with session management."""
+    # Interactive chat loop with stored chat session
 
     repo = Path(repo).resolve()
     docstra = Docstra(repo)
@@ -241,18 +241,24 @@ def chat(repo, with_sources):
         if question.lower() == 'exit':
             break
 
-        result = docstra.query_repository(question)
+        # Get past session messages
+        session_history = chat_db.get_chat_history(session_id)
+
+        # Run query with history
+        result = docstra.query_repository(question, session_history=session_history)
+
         if "answer" in result:
             click.secho(result["answer"])
 
-            # Save message to session
+            # Save the new message to session history
             chat_db.save_message(session_id, question, result["answer"])
+
 
 @cli.command()
 @click.option("--port", "-p", default=8000, help="Port to run the FastAPI server on.")
 @click.option("--host", "-h", default="127.0.0.1", help="Host to run the FastAPI server on.")
 def server(port, host):
-    """Start a FastAPI server for querying repositories."""
+    # Start a FastAPI server for querying repositories.
     from docstra.server import run_server
     run_server(port=port, host=host)
 
