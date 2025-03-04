@@ -27,9 +27,12 @@ websockets = "^14.2"
 rich = "^13.9.4"
 click = "^8.1.8"
 redis = "^5.2.1"
+langchain-anthropic = "^0.3.8"
 
 [tool.poetry.scripts]
 docstra = "docstra.cli:cli"
+
+[tool.poetry.group.dev.dependencies]
 
 [build-system]
 requires = ["poetry-core"]
