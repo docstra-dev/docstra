@@ -27,7 +27,7 @@ class QueryRequest(BaseModel):
 
 @app.post("/chat/save")
 async def save_chat(request: QueryRequest):
-    """Save a chat session to the database."""
+    # Save a chat session to the database
     try:
         session_name = f"Session - {request.repo_path}"  # Generate session name
         messages = [{"question": request.query, "answer": "Mock Answer"}]  # Replace with real chat response
@@ -39,7 +39,7 @@ async def save_chat(request: QueryRequest):
 
 @app.get("/chat/sessions")
 async def list_chat_sessions():
-    """List all stored chat sessions."""
+    # list all stored chat sessions
     try:
         sessions = get_chat_sessions()
         return {"sessions": sessions}
@@ -48,7 +48,7 @@ async def list_chat_sessions():
 
 @app.get("/chat/history/{session_id}")
 async def get_chat_history_api(session_id: int):
-    """Retrieve chat history for a specific session."""
+    # Retrieve chat history from a specific session
     try:
         history = get_chat_history(session_id)
         if history is None:

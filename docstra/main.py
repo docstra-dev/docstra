@@ -28,6 +28,7 @@ class Docstra:
     ):
         # Load configurations
         self.repo_path = repo_path
+        self.repo = self.repo_path
         self.core_config = load_core_config()
         self.project_config = load_project_config(repo_path)
 
@@ -67,8 +68,22 @@ class Docstra:
         )
         add_documents_to_vectorstore(self.vectorstore, documents)
 
-    def query_repository(self, query):
-        return run_query(self.retriever, query)
+    # Query the repository for answers, including session history
+    def query_repository(self, question, session_history=None):
+
+        retriever = get_retriever(self.vectorstore)
+
+        # Include previous chat messages in the query (for continuity)
+        history_context = ""
+        if session_history:
+            for entry in session_history:
+                history_context += f"User: {entry['question']}\nDocstra: {entry['response']}\n"
+
+        if history_context:
+            question = f"Previous conversation:\n{history_context}\nCurrent question: {question}"
+
+        result = run_query(retriever, question)
+        return result
 
     def get_retriever(self):
         return self.retriever
