@@ -23,11 +23,11 @@ from docstra.service import DocstraService
 from docstra.config import DocstraConfig
 from docstra.errors import (
     DocstraError,
-    NotFoundError, 
-    ValidationError, 
+    NotFoundError,
+    ValidationError,
     RequestError,
     APIError,
-    SessionError
+    SessionError,
 )
 
 
@@ -163,20 +163,22 @@ async def send_message_stream(
     session = service.get_session(session_id)
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
-        
+
     async def event_generator():
         try:
-            async for chunk in service.process_message_stream(session_id, message.content):
+            async for chunk in service.process_message_stream(
+                session_id, message.content
+            ):
                 # Format as a server-sent event
                 yield f"data: {chunk}\n\n"
-            
+
             # Send a done event to signal completion
             yield "event: done\ndata: \n\n"
         except Exception as e:
             # Send an error event
             error_msg = str(e).replace("\n", "\\n")
             yield f"event: error\ndata: {error_msg}\n\n"
-    
+
     # Return a streaming response with SSE media type
     return Response(
         content=event_generator(),
@@ -346,17 +348,12 @@ async def stream_response(session_id: str, message: str):
         async for chunk in service.process_message_stream(session_id, message):
             full_response += chunk
             # Send each chunk as it's generated
-            await websocket.send_json({
-                "type": "stream", 
-                "content": chunk,
-                "full": full_response
-            })
-            
+            await websocket.send_json(
+                {"type": "stream", "content": chunk, "full": full_response}
+            )
+
         # Send a completion message to signal the end of streaming
-        await websocket.send_json({
-            "type": "complete", 
-            "content": full_response
-        })
+        await websocket.send_json({"type": "complete", "content": full_response})
     except Exception as e:
         # Send error if something goes wrong
         try:
@@ -366,10 +363,15 @@ async def stream_response(session_id: str, message: str):
 
 
 # CLI entry point
-def start_server(host: str = "127.0.0.1", port: int = 8000, working_dir: str = None, 
-              log_level: str = "INFO", log_file: str = None):
+def start_server(
+    host: str = "127.0.0.1",
+    port: int = 8000,
+    working_dir: str = None,
+    log_level: str = "INFO",
+    log_file: str = None,
+):
     """Start the API server.
-    
+
     Args:
         host: Host to bind the server to
         port: Port to bind the server to
@@ -386,7 +388,7 @@ def start_server(host: str = "127.0.0.1", port: int = 8000, working_dir: str = N
 
     # Configure logging for uvicorn
     uvicorn_log_level = log_level.lower()
-    
+
     if working_dir:
         service = DocstraService(working_dir=working_dir)
     else:
@@ -394,38 +396,42 @@ def start_server(host: str = "127.0.0.1", port: int = 8000, working_dir: str = N
 
     # Run the server
     uvicorn.run(
-        app, 
-        host=host, 
-        port=port, 
-        workers=1, 
+        app,
+        host=host,
+        port=port,
+        workers=1,
         log_level=uvicorn_log_level,
-        log_config={
-            "version": 1,
-            "disable_existing_loggers": False,
-            "formatters": {
-                "default": {
-                    "format": "%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-                }
-            },
-            "handlers": {
-                "default": {
-                    "formatter": "default",
-                    "class": "logging.StreamHandler",
-                    "stream": "ext://sys.stderr",
+        log_config=(
+            {
+                "version": 1,
+                "disable_existing_loggers": False,
+                "formatters": {
+                    "default": {
+                        "format": "%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+                    }
                 },
-                "file": {
-                    "formatter": "default",
-                    "class": "logging.FileHandler",
-                    "filename": log_file if log_file else "docstra_api.log"
-                }
-            },
-            "loggers": {
-                "docstra": {
-                    "handlers": ["file" if log_file else "default"],
-                    "level": log_level,
-                }
-            },
-        } if log_file else None  # Only use custom config if log_file is provided
+                "handlers": {
+                    "default": {
+                        "formatter": "default",
+                        "class": "logging.StreamHandler",
+                        "stream": "ext://sys.stderr",
+                    },
+                    "file": {
+                        "formatter": "default",
+                        "class": "logging.FileHandler",
+                        "filename": log_file if log_file else "docstra_api.log",
+                    },
+                },
+                "loggers": {
+                    "docstra": {
+                        "handlers": ["file" if log_file else "default"],
+                        "level": log_level,
+                    }
+                },
+            }
+            if log_file
+            else None
+        ),  # Only use custom config if log_file is provided
     )
 
 

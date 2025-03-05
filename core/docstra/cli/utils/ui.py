@@ -54,9 +54,14 @@ def display_help_message():
 - `session delete <id>` - Delete a session
 
 ### File Commands
-- `file add <path>` - Add a file to the current context
+- `file add <path>` - Add a specific file to the current context
 - `file list` - List all files in the current context
 - `file remove <path>` - Remove a file from the current context
+
+### Context Behavior
+- When you add specific files with `file add`, the assistant will focus on those files for context
+- When no files are added, all indexed documents in the vectorstore will be available as context
+- Use `file list` to see which files are currently in context
 
 ### System Commands
 - `clear` - Clear the terminal

@@ -40,7 +40,7 @@ class DocstraCommand:
         """Initialize the Docstra service.
 
         Args:
-            config_path: Path to the configuration file
+            config_path: Path to the configuration file (optional, will auto-detect if not provided)
             log_level: Optional log level override
             log_file: Optional log file path
 
@@ -53,6 +53,8 @@ class DocstraCommand:
 
         service_args = {"working_dir": str(self.working_dir)}
 
+        # If config_path not explicitly provided, we'll let DocstraService.load method
+        # handle the config loading with proper precedence
         if config_path:
             service_args["config_path"] = config_path
 
@@ -64,20 +66,40 @@ class DocstraCommand:
 
     def get_config_path(self) -> Path:
         """Get the path to the config file.
+        
+        This checks for configuration in two locations:
+        1. docstra.json in the root directory (preferred)
+        2. .docstra/config.json (fallback for backward compatibility)
 
         Returns:
             Path to the configuration file
         """
+        # First check for root config
+        root_config_path = self.working_dir / "docstra.json"
+        if root_config_path.exists():
+            return root_config_path
+            
+        # Fall back to .docstra/config.json
         return self.working_dir / ".docstra" / "config.json"
 
     def ensure_initialized(self) -> bool:
         """Check if Docstra is initialized in the current directory.
+        
+        Docstra is considered initialized if either:
+        1. A docstra.json file exists in the working directory (preferred approach)
+        2. A .docstra/config.json file exists (backwards compatibility)
 
         Returns:
             True if initialized, False otherwise
         """
-        config_path = self.get_config_path()
-        return config_path.exists()
+        # Check for root config
+        root_config_path = self.working_dir / "docstra.json"
+        if root_config_path.exists():
+            return True
+            
+        # Check for .docstra/config.json
+        legacy_config_path = self.working_dir / ".docstra" / "config.json"
+        return legacy_config_path.exists()
 
     def display_success(self, message: str, title: str = "Success") -> None:
         """Display a success message.
@@ -110,7 +132,11 @@ class DocstraCommand:
         )
 
     async def stream_response(
-        self, service: DocstraService, session_id: str, message: str
+        self,
+        service: DocstraService,
+        session_id: str,
+        message: str,
+        debug: bool = False,
     ) -> str:
         """Stream response from the service and display it.
 
@@ -118,6 +144,7 @@ class DocstraCommand:
             service: DocstraService instance
             session_id: Session ID to use
             message: Message to process
+            debug: Whether to show debug information including prompts and context
 
         Returns:
             The complete response
@@ -131,7 +158,11 @@ class DocstraCommand:
             # Call the service once to start processing
             # We just want to get the first chunk to know the model has started generating
             first_chunk_future = asyncio.ensure_future(
-                anext(service.process_message_stream(session_id, message).__aiter__())
+                anext(
+                    service.process_message_stream(
+                        session_id, message, debug
+                    ).__aiter__()
+                )
             )
 
             # Wait for the first chunk or timeout after 3 seconds
@@ -150,6 +181,48 @@ class DocstraCommand:
                 # If anything goes wrong, we'll just start the stream from scratch
                 first_chunk = ""
 
+        # Get session and debug information if needed
+        if debug:
+            session = service.get_session(session_id)
+            context_files = service.get_context_files(session_id)
+            chat_history = session.chat_history.messages
+
+            # Show debug information
+            self.console.print("\n[bold yellow]DEBUG INFORMATION[/bold yellow]")
+            self.console.print("[bold]Context Files:[/bold]")
+            for file in context_files:
+                self.console.print(f"  - {file}")
+
+            self.console.print("\n[bold]Chain Input:[/bold]")
+            # Format chat history for display - handling both dict and LangChain message objects
+            formatted_history = []
+            for msg in chat_history:
+                if hasattr(msg, "type") and hasattr(msg, "content"):
+                    # LangChain message object
+                    formatted_history.append(f"{msg.type}: {msg.content}")
+                elif isinstance(msg, dict) and "role" in msg and "content" in msg:
+                    # Dictionary format
+                    formatted_history.append(f"{msg['role']}: {msg['content']}")
+
+            chain_input = {
+                "question": message,
+                "chat_history": formatted_history,
+                "cwd": str(service.working_dir),
+            }
+            self.console.print_json(data=chain_input)
+
+            # Display retrieved context
+            self.console.print("\n[bold]Retrieved Context (preview):[/bold]")
+            context = service.preview_context(session_id, message)
+            self.console.print(
+                Markdown(context[:500] + "..." if len(context) > 500 else context)
+            )
+
+            self.console.print("\n[bold]System Prompt:[/bold]")
+            self.console.print(Markdown(session.config.system_prompt))
+
+            self.console.print("\n-------------------")
+
         # Display the streaming response header
         self.console.print("\n[bold orange_red1]Docstra[/bold orange_red1]:")
 
@@ -159,7 +232,9 @@ class DocstraCommand:
         with Live(Markdown(response), refresh_per_second=10, transient=True) as live:
             try:
                 # Create a new stream generator
-                stream = service.process_message_stream(session_id, message).__aiter__()
+                stream = service.process_message_stream(
+                    session_id, message, debug=debug
+                ).__aiter__()
 
                 # Skip the first chunk if we already have it
                 if first_chunk:

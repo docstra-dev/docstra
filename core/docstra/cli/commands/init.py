@@ -19,18 +19,18 @@ from docstra.cli.utils import (
 
 class InitCommand(DocstraCommand):
     """Command to initialize Docstra in a directory."""
-    
+
     def execute(
         self,
         force: bool = False,
         log_level: str = None,
         log_file: str = None,
         no_console_log: bool = False,
-        wizard: bool = False,
+        no_wizard: bool = False,
         **kwargs,
     ):
         """Execute the init command.
-        
+
         Args:
             force: Force reinitialization even if already initialized
             log_level: Log level to use
@@ -40,7 +40,7 @@ class InitCommand(DocstraCommand):
             **kwargs: Additional configuration options
         """
         from docstra.cli.utils import display_header
-        
+
         # Display the header
         display_header("Initialization")
 
@@ -56,24 +56,35 @@ class InitCommand(DocstraCommand):
         # Update from environment variables
         config = configure_from_env(config)
 
-        # Interactive configuration wizard if requested
-        if wizard:
+        # Interactive configuration wizard by default, unless skipped
+        if not no_wizard:
             try:
+                self.console.print("[bold blue]Starting interactive configuration wizard...[/bold blue]")
+                self.console.print("(Use Ctrl+C to skip and use defaults)\n")
                 config = run_configuration_wizard(config)
+                self.console.print()
             except click.Abort:
-                self.console.print("[yellow]Configuration cancelled[/yellow]")
-                return
+                self.console.print("[yellow]Configuration wizard skipped, using defaults[/yellow]")
 
         # Override with any explicit parameters
         for key, value in kwargs.items():
             if value is not None:
-                setattr(config, key, value)
+                # Handle special cases for negated flags
+                if key == "no_lazy_indexing" and value:
+                    setattr(config, "lazy_indexing", False)
+                elif key == "no_file_watching" and value:
+                    setattr(config, "auto_index", False)
+                # Skip negated flags when setting attributes
+                elif not key.startswith("no_"):
+                    setattr(config, key, value)
 
         # Configure logging options
         if log_level:
             config.log_level = log_level
-        config.log_file = log_file
-        config.console_logging = not no_console_log
+        if log_file is not None:
+            config.log_file = log_file
+        if no_console_log:
+            config.console_logging = False
 
         try:
             # Create progress spinner
@@ -83,11 +94,10 @@ class InitCommand(DocstraCommand):
                 # Initialize service
                 service = DocstraService(working_dir=str(self.working_dir))
 
-                # Save the config
-                config_dir = Path(self.working_dir) / ".docstra"
-                config_dir.mkdir(exist_ok=True, parents=True)
-                config_path = config_dir / "config.json"
-                config.to_file(str(config_path))
+                # Save the config to both locations
+                # 2. Root location (new approach)
+                root_config_path = Path(self.working_dir) / "docstra.json"
+                config.to_file(str(root_config_path))
 
                 # Create a default session
                 session_id = service.create_session()
@@ -95,12 +105,14 @@ class InitCommand(DocstraCommand):
                 # Try to rename with a friendly name
                 service.rename_session(session_id, "default")
 
-                # Force index update
-                service.update_index()
+                # No automatic indexing during initialization
+                # Files will be indexed when referenced or added explicitly
 
             self.display_success(
                 f"✅ Docstra initialized successfully!\n\n"
-                f"Configuration saved to [bold]{config_path}[/bold]\n"
+                f"Configuration saved to:\n"
+                f"- [bold]{root_config_path}[/bold] (primary location)\n"
+                f"- [bold]{config_path}[/bold] (legacy support)\n\n"
                 f"Created default session: [bold]{session_id}[/bold]",
                 title="Success",
             )
@@ -123,21 +135,23 @@ class InitCommand(DocstraCommand):
 
         try:
             config = DocstraConfig.from_file(str(config_path))
-            
+
             # Display config in a nice format
             self.console.print("\n[bold]Current Configuration:[/bold]")
-            
+
             for key, value in vars(config).items():
-                if key.startswith('_') or callable(value):
+                if key.startswith("_") or callable(value):
                     continue
-                    
+
                 # Truncate long values like system prompt
                 display_value = str(value)
                 if len(display_value) > 50 and key == "system_prompt":
                     display_value = display_value[:50] + "..."
-                    
-                self.console.print(f"  [cyan]{key}[/cyan]: [green]{display_value}[/green]")
-                
+
+                self.console.print(
+                    f"  [cyan]{key}[/cyan]: [green]{display_value}[/green]"
+                )
+
         except Exception as e:
             self.console.print(f"[red]Error reading configuration: {str(e)}[/red]")
 
@@ -148,10 +162,11 @@ class InitCommand(DocstraCommand):
 @click.option("--log-level", help="Log level (DEBUG, INFO, WARNING, ERROR, CRITICAL)")
 @click.option("--log-file", help="Path to log file")
 @click.option("--no-console-log", is_flag=True, help="Disable console logging")
-@click.option("--wizard", is_flag=True, help="Run interactive configuration wizard")
+@click.option("--no-wizard", is_flag=True, help="Skip interactive configuration wizard (use defaults)")
 @click.option("--model-name", help="Model name to use")
 @click.option("--temperature", type=float, help="Model temperature (0.0-1.0)")
-@click.option("--lazy-indexing", is_flag=True, help="Enable lazy indexing mode")
+@click.option("--no-lazy-indexing", is_flag=True, help="Disable lazy indexing mode (indexes all files upfront)")
+@click.option("--no-file-watching", is_flag=True, help="Disable automatic file watching")
 def init(dir_path, **kwargs):
     """Initialize Docstra in the specified directory."""
     command = InitCommand(working_dir=dir_path)

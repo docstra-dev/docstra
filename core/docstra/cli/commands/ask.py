@@ -17,33 +17,35 @@ from docstra.cli.utils import resolve_relative_path
 
 class AskCommand(DocstraCommand):
     """Command to ask a one-off question about a file."""
-    
+
     def execute(
         self,
-        file_path: str,
+        file_path: Path | str,
         question: str,
         log_level: str = None,
         log_file: str = None,
+        debug: bool = False,
     ):
         """Execute the ask command.
-        
+
         Args:
             file_path: Path to the file to ask about
             question: Question to ask
             log_level: Log level to use
             log_file: Log file path
+            debug: Whether to show debug information
         """
         from docstra.cli.utils import display_header
-        
+
         # Normalize file path
-        file_path = os.path.normpath(file_path)
+        file_path = Path(file_path).resolve()
 
         # Handle absolute or relative paths
-        if os.path.isabs(file_path):
+        if Path(file_path).is_absolute():
             abs_file_path = file_path
-            rel_file_path = os.path.relpath(file_path, str(self.working_dir))
+            rel_file_path = Path(file_path).relative_to(self.working_dir)
         else:
-            abs_file_path = os.path.join(str(self.working_dir), file_path)
+            abs_file_path = self.working_dir / file_path
             rel_file_path = file_path
 
         # Display header with file information
@@ -72,16 +74,24 @@ class AskCommand(DocstraCommand):
 
             # Add file context
             service.add_context(session_id, rel_file_path)
-            
+
             # Process the message with streaming
-            response = self.run_async(self.stream_response(service, session_id, question))
+            response = self.run_async(
+                self.stream_response(service, session_id, question, debug=debug)
+            )
 
             # Ask if user wants to continue in chat mode with this session
             if Confirm.ask("Would you like to continue chatting about this file?"):
                 # Import here to avoid circular imports
                 from docstra.cli.commands.chat import ChatCommand
+
                 chat_cmd = ChatCommand(working_dir=str(self.working_dir))
-                chat_cmd.execute(session_id=session_id, log_level=log_level, log_file=log_file)
+                chat_cmd.execute(
+                    session_id=session_id,
+                    log_level=log_level,
+                    log_file=log_file,
+                    debug=debug,
+                )
 
         except Exception as e:
             self.display_error(str(e))
@@ -93,12 +103,17 @@ class AskCommand(DocstraCommand):
 @click.argument("question", type=str)
 @click.option("--log-level", help="Log level (DEBUG, INFO, WARNING, ERROR, CRITICAL)")
 @click.option("--log-file", help="Path to log file")
-def ask(dir_path, file_path, question, log_level, log_file):
+@click.option(
+    "--debug",
+    is_flag=True,
+    help="Show debug information including prompts and full responses",
+)
+def ask(dir_path, file_path, question, log_level, log_file, debug):
     """Ask a question about a specific file.
-    
+
     DIR_PATH is the directory containing the codebase.
     FILE_PATH is the path to the file to ask about.
     QUESTION is the question to ask about the file.
     """
     command = AskCommand(working_dir=dir_path)
-    command.execute(file_path, question, log_level, log_file)
+    command.execute(file_path, question, log_level, log_file, debug)

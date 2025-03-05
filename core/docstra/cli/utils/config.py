@@ -22,41 +22,41 @@ def configure_from_env(config: DocstraConfig) -> DocstraConfig:
     Returns:
         Updated configuration
     """
-    # OpenAI configuration
-    if "OPENAI_API_KEY" in os.environ:
-        # Only set this as an indicator that we have the API key
-        config.model_provider = "openai"
-        
-    if "OPENAI_MODEL" in os.environ:
-        config.model_name = os.environ["OPENAI_MODEL"]
-        
-    # Advanced configuration
-    if "DOCSTRA_CHUNK_SIZE" in os.environ:
-        try:
-            config.chunk_size = int(os.environ["DOCSTRA_CHUNK_SIZE"])
-        except ValueError:
-            pass
-            
-    if "DOCSTRA_CHUNK_OVERLAP" in os.environ:
-        try:
-            config.chunk_overlap = int(os.environ["DOCSTRA_CHUNK_OVERLAP"])
-        except ValueError:
-            pass
-    
-    if "DOCSTRA_TEMPERATURE" in os.environ:
-        try:
-            config.temperature = float(os.environ["DOCSTRA_TEMPERATURE"])
-        except ValueError:
-            pass
-            
-    # Logging configuration        
-    if "DOCSTRA_LOG_LEVEL" in os.environ:
-        config.log_level = os.environ["DOCSTRA_LOG_LEVEL"]
-        
-    if "DOCSTRA_LOG_FILE" in os.environ:
-        config.log_file = os.environ["DOCSTRA_LOG_FILE"]
-        
-    return config
+    # Use the built-in method from DocstraConfig
+    try:
+        return DocstraConfig._update_from_env(config)
+    except AttributeError:
+        # Fall back for older versions without the method
+        # Look for environment variables with DOCSTRA_ prefix
+        for key, value in os.environ.items():
+            if key.startswith("DOCSTRA_"):
+                # Convert to lowercase property name
+                prop_name = key[9:].lower()
+                
+                # Skip if property doesn't exist in config
+                if not hasattr(config, prop_name):
+                    continue
+                    
+                # Convert value to appropriate type
+                prop_type = type(getattr(config, prop_name))
+                if prop_type == bool:
+                    # Convert string to boolean
+                    setattr(config, prop_name, value.lower() in ("true", "1", "yes"))
+                elif prop_type == int:
+                    try:
+                        setattr(config, prop_name, int(value))
+                    except ValueError:
+                        pass
+                elif prop_type == float:
+                    try:
+                        setattr(config, prop_name, float(value))
+                    except ValueError:
+                        pass
+                else:
+                    # Use as string
+                    setattr(config, prop_name, value)
+                    
+        return config
 
 
 def run_configuration_wizard(config: DocstraConfig) -> DocstraConfig:
@@ -69,7 +69,8 @@ def run_configuration_wizard(config: DocstraConfig) -> DocstraConfig:
         Updated configuration
     """
     console.print("[bold]Docstra Configuration Wizard[/bold]")
-    console.print("Press Ctrl+C at any time to cancel")
+    console.print("Press Ctrl+C at any time to skip remaining steps")
+    console.print("Default values shown in [cyan]brackets[/cyan]")
     console.print()
     
     # Model configuration
@@ -101,7 +102,7 @@ def run_configuration_wizard(config: DocstraConfig) -> DocstraConfig:
         console.print("[yellow]Invalid temperature value, using default.[/yellow]")
     
     # Advanced settings
-    if Confirm.ask("Configure advanced settings?", default=False):
+    if Confirm.ask("Configure advanced settings?", default=True):
         # Chunk size
         chunk_size_str = Prompt.ask(
             "Chunk size for indexing",
@@ -132,11 +133,20 @@ def run_configuration_wizard(config: DocstraConfig) -> DocstraConfig:
         # Lazy indexing
         config.lazy_indexing = Confirm.ask(
             "Enable lazy indexing? (index files on-demand)",
-            default=getattr(config, "lazy_indexing", False)
+            default=getattr(config, "lazy_indexing", True)
         )
         
+        # File watching
+        if config.lazy_indexing:
+            enable_file_watching = Confirm.ask(
+                "Enable file watching? (automatically track changes)",
+                default=True
+            )
+            if not enable_file_watching:
+                config.auto_index = False
+        
         # File patterns
-        if Confirm.ask("Configure file pattern settings?", default=False):
+        if Confirm.ask("Configure file pattern settings (extensions, excluded dirs)?", default=False):
             # Included extensions
             extensions_str = Prompt.ask(
                 "Included file extensions (comma-separated)",
@@ -154,7 +164,7 @@ def run_configuration_wizard(config: DocstraConfig) -> DocstraConfig:
             config.excluded_patterns = [pat.strip() for pat in patterns_str.split(",")]
     
     # Logging settings
-    if Confirm.ask("Configure logging settings?", default=False):
+    if Confirm.ask("Configure logging settings (level, file)?", default=False):
         config.log_level = Prompt.ask(
             "Log level (DEBUG, INFO, WARNING, ERROR, CRITICAL)",
             default=config.log_level

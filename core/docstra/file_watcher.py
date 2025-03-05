@@ -2,21 +2,148 @@ import os
 import time
 import threading
 import logging
-from typing import List, Set, Dict, Optional, Callable
+import queue
+from typing import List, Optional, Callable
 from pathlib import Path
+
+from watchdog.observers import Observer
+from watchdog.events import (
+    PatternMatchingEventHandler,
+)
 
 logger = logging.getLogger(__name__)
 
 
+class DocstraEventHandler(PatternMatchingEventHandler):
+    """Custom event handler for file system changes with debounce support."""
+
+    def __init__(
+        self,
+        patterns=None,
+        ignore_patterns=None,
+        ignore_directories=True,
+        case_sensitive=False,
+        callback=None,
+        debounce_seconds=1.0,
+        working_dir=None,
+    ):
+        """Initialize the event handler.
+
+        Args:
+            patterns: List of file patterns to watch
+            ignore_patterns: List of patterns to ignore
+            ignore_directories: Whether to ignore directory events
+            case_sensitive: Whether patterns are case sensitive
+            callback: Function to call with (added, modified, deleted) file lists
+            debounce_seconds: Time to wait for batching similar events
+            working_dir: Base directory for generating relative paths
+        """
+        super().__init__(
+            patterns=patterns,
+            ignore_patterns=ignore_patterns,
+            ignore_directories=ignore_directories,
+            case_sensitive=case_sensitive,
+        )
+        self.callback = callback
+        self.debounce_seconds = debounce_seconds
+        self.working_dir = working_dir
+
+        # Event queues for collecting batched events
+        self.event_queue = queue.Queue()
+        self.added_files = set()
+        self.modified_files = set()
+        self.deleted_files = set()
+
+        # Timer for debouncing
+        self.last_event_time = 0
+        self.debounce_timer = None
+        self.lock = threading.RLock()
+
+    def on_created(self, event):
+        """Handle file creation events."""
+        if not event.is_directory:
+            self._queue_event("added", event.src_path)
+
+    def on_modified(self, event):
+        """Handle file modification events."""
+        if not event.is_directory:
+            self._queue_event("modified", event.src_path)
+
+    def on_deleted(self, event):
+        """Handle file deletion events."""
+        if not event.is_directory:
+            self._queue_event("deleted", event.src_path)
+
+    def on_moved(self, event):
+        """Handle file moved/renamed events."""
+        if not event.is_directory:
+            self._queue_event("deleted", event.src_path)
+            self._queue_event("added", event.dest_path)
+
+    def _queue_event(self, event_type, file_path):
+        """Queue event with debouncing."""
+        with self.lock:
+            now = time.time()
+            self.last_event_time = now
+
+            # Add event to appropriate set
+            if event_type == "added":
+                self.added_files.add(file_path)
+                self.deleted_files.discard(file_path)  # In case of quick delete/add
+            elif event_type == "modified":
+                # If a file was just added, don't mark it as modified
+                if file_path not in self.added_files:
+                    self.modified_files.add(file_path)
+            elif event_type == "deleted":
+                self.deleted_files.add(file_path)
+                self.added_files.discard(file_path)
+                self.modified_files.discard(file_path)
+
+            # Set or reset debounce timer
+            if self.debounce_timer:
+                self.debounce_timer.cancel()
+
+            self.debounce_timer = threading.Timer(
+                self.debounce_seconds, self._process_events
+            )
+            self.debounce_timer.daemon = True
+            self.debounce_timer.start()
+
+    def _process_events(self):
+        """Process all batched events after debounce period."""
+        with self.lock:
+            if not (self.added_files or self.modified_files or self.deleted_files):
+                return
+
+            # Convert to lists for callback
+            added_files = list(self.added_files)
+            modified_files = list(self.modified_files)
+            deleted_files = list(self.deleted_files)
+
+            # Clear sets for next batch
+            self.added_files.clear()
+            self.modified_files.clear()
+            self.deleted_files.clear()
+
+            # Call callback with batched events
+            if self.callback:
+                try:
+                    self.callback(added_files, modified_files, deleted_files)
+                except Exception as e:
+                    logger.error(
+                        f"Error in file change callback: {str(e)}", exc_info=True
+                    )
+
+
 class FileWatcher:
-    """Watches a directory for file changes and triggers reindexing."""
+    """Watches a directory for file changes using Watchdog for native FS events."""
 
     def __init__(
         self,
         directory: str,
         file_extensions: List[str] = None,
         ignored_dirs: List[str] = None,
-        check_interval: float = 5.0,
+        debounce_seconds: float = 1.0,
         callback: Optional[Callable[[List[str], List[str], List[str]], None]] = None,
     ):
         """Initialize the file watcher.
@@ -25,11 +152,11 @@ class FileWatcher:
             directory: Root directory to watch
             file_extensions: List of file extensions to watch (e.g., ['.py', '.js'])
             ignored_dirs: List of directories to ignore (e.g., ['.git', 'node_modules'])
-            check_interval: Interval in seconds between checks
+            debounce_seconds: Time in seconds to wait for batching similar events
             callback: Function to call when changes are detected with
-                     (added, modified, deleted) file lists as arguments
+                    (added, modified, deleted) file lists as arguments
         """
-        self.directory = os.path.abspath(directory)
+        self.directory = Path(directory).resolve()
         self.file_extensions = file_extensions or [
             ".py",
             ".js",
@@ -40,109 +167,85 @@ class FileWatcher:
             ".go",
             ".rs",
         ]
-        self.ignored_dirs = set(
-            ignored_dirs
-            or [".git", "node_modules", "venv", ".venv", "__pycache__", "build", "dist"]
-        )
-        self.check_interval = check_interval
+        self.ignored_dirs = ignored_dirs or [
+            ".git",
+            "node_modules",
+            "venv",
+            ".venv",
+            "__pycache__",
+            "build",
+            "dist",
+        ]
+        self.debounce_seconds = debounce_seconds
         self.callback = callback
 
-        # File tracking
-        self.file_mtimes: Dict[str, float] = {}
+        # Set up observer
+        self.observer = None
         self.running = False
-        self.watch_thread = None
 
-        # Initial scan
-        self._scan_files()
+        # Patterns for event handler
+        self.patterns = [f"*{ext}" for ext in self.file_extensions]
+        self.ignore_patterns = [f"*/{d}/*" for d in self.ignored_dirs]
 
-    def _scan_files(self) -> Dict[str, float]:
-        """Scan the directory for files and record their modification times.
+        # Set up event handler
+        self.event_handler = DocstraEventHandler(
+            patterns=self.patterns,
+            ignore_patterns=self.ignore_patterns,
+            ignore_directories=True,
+            case_sensitive=False,
+            callback=self._handle_batch_events,
+            debounce_seconds=debounce_seconds,
+            working_dir=self.directory,
+        )
 
-        Returns:
-            Dictionary of file paths to modification times
-        """
-        current_files = {}
+    def _handle_batch_events(self, added_files, modified_files, deleted_files):
+        """Handle batched events and pass to the callback."""
+        # Filter any remaining ignored directories that pattern matching missed
+        filtered_added = self._filter_ignored_paths(added_files)
+        filtered_modified = self._filter_ignored_paths(modified_files)
+        filtered_deleted = self._filter_ignored_paths(deleted_files)
 
-        for root, dirs, files in os.walk(self.directory):
-            # Skip ignored directories
-            dirs[:] = [
-                d for d in dirs if d not in self.ignored_dirs and not d.startswith(".")
-            ]
-
-            for file in files:
-                # Check file extension
-                if any(file.endswith(ext) for ext in self.file_extensions):
-                    file_path = os.path.join(root, file)
-                    try:
-                        mtime = os.path.getmtime(file_path)
-                        current_files[file_path] = mtime
-                    except OSError:
-                        # Skip files that can't be accessed
-                        pass
-
-        return current_files
-
-    def _check_for_changes(self):
-        """Check for changes in the watched files."""
-        current_files = self._scan_files()
-
-        # Find new and modified files
-        added_files = []
-        modified_files = []
-
-        for file_path, mtime in current_files.items():
-            if file_path not in self.file_mtimes:
-                added_files.append(file_path)
-            elif mtime > self.file_mtimes[file_path]:
-                modified_files.append(file_path)
-
-        # Find deleted files
-        deleted_files = [f for f in self.file_mtimes if f not in current_files]
-
-        # Update file mtimes
-        self.file_mtimes = current_files
-
-        # If changes detected and callback provided, call it
-        if (added_files or modified_files or deleted_files) and self.callback:
+        # Call the callback with filtered files
+        if self.callback and (filtered_added or filtered_modified or filtered_deleted):
             try:
-                self.callback(added_files, modified_files, deleted_files)
+                self.callback(filtered_added, filtered_modified, filtered_deleted)
             except Exception as e:
-                logger.error(f"Error in file change callback: {str(e)}", exc_info=True)
+                logger.error(f"Error in file watcher callback: {str(e)}", exc_info=True)
 
-        return added_files, modified_files, deleted_files
-
-    def _watch_loop(self):
-        """Main watch loop that periodically checks for changes."""
-        while self.running:
-            try:
-                self._check_for_changes()
-            except Exception as e:
-                logger.error(
-                    f"Error checking for file changes: {str(e)}", exc_info=True
-                )
-
-            # Sleep until next check
-            time.sleep(self.check_interval)
+    def _filter_ignored_paths(self, file_paths):
+        """Filter out paths in ignored directories."""
+        result = []
+        for path in file_paths:
+            # Convert to relative path for easier filtering
+            rel_path = Path(path).relative_to(self.directory)
+            # Check if path is in an ignored directory
+            if not any(
+                ignored_dir in rel_path.split(os.sep)
+                for ignored_dir in self.ignored_dirs
+            ):
+                result.append(path)
+        return result
 
     def start(self):
         """Start watching for file changes."""
         if self.running:
             return
 
+        # Create observer
+        self.observer = Observer()
+        self.observer.schedule(self.event_handler, self.directory, recursive=True)
+        self.observer.start()
         self.running = True
-        self.watch_thread = threading.Thread(target=self._watch_loop, daemon=True)
-        self.watch_thread.start()
 
-        logger.info(f"Started file watcher in {self.directory}")
+        logger.info(f"Started watchdog file watcher in {self.directory}")
 
     def stop(self):
         """Stop watching for file changes."""
-        self.running = False
-
-        if self.watch_thread and self.watch_thread.is_alive():
-            self.watch_thread.join(timeout=1.0)
-
-        logger.info("Stopped file watcher")
+        if self.observer and self.observer.is_alive():
+            self.observer.stop()
+            self.observer.join(timeout=5.0)
+            self.running = False
+            logger.info("Stopped file watcher")
 
     def __enter__(self):
         """Start watcher when used as a context manager."""
@@ -171,8 +274,51 @@ def integrate_file_watcher(service_class):
 
         # Create file watcher if auto_index is enabled
         if auto_index:
+            # Get file extensions from config if available
+            extensions = getattr(
+                self.config,
+                "included_extensions",
+                [
+                    ".py",
+                    ".js",
+                    ".ts",
+                    ".java",
+                    ".kt",
+                    ".cs",
+                    ".go",
+                    ".rs",
+                    ".cpp",
+                    ".c",
+                    ".h",
+                    ".hpp",
+                ],
+            )
+
+            # Get excluded patterns from config if available
+            excluded_dirs = getattr(
+                self.config,
+                "excluded_patterns",
+                [
+                    ".git",
+                    "node_modules",
+                    "venv",
+                    ".venv",
+                    "build",
+                    "dist",
+                    "__pycache__",
+                    ".pytest_cache",
+                ],
+            )
+
+            # Get debounce interval from config
+            check_interval = getattr(self.config, "check_interval", 1.0)
+
             self.file_watcher = FileWatcher(
-                directory=self.working_dir, callback=self._handle_file_changes
+                directory=self.working_dir,
+                file_extensions=extensions,
+                ignored_dirs=excluded_dirs,
+                debounce_seconds=check_interval,
+                callback=self._handle_file_changes,
             )
             self.file_watcher.start()
 
@@ -194,11 +340,14 @@ def integrate_file_watcher(service_class):
 
         # Process new and modified files
         if added_paths or modified_paths:
-            self._process_files_for_indexing(added_paths + modified_paths)
+            # Use parallel processing for multiple files
+            self._process_files_for_indexing(
+                added_paths + modified_paths, parallel=True
+            )
 
         # Remove deleted files
         if deleted_files:
-            rel_paths = [os.path.relpath(f, self.working_dir) for f in deleted_files]
+            rel_paths = [Path(f).relative_to(self.working_dir) for f in deleted_files]
             self._remove_files_from_index(rel_paths)
 
     # Define cleanup method override

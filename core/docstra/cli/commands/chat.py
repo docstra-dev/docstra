@@ -34,6 +34,7 @@ class ChatCommand(DocstraCommand):
         session_id: str = None,
         log_level: str = None,
         log_file: str = None,
+        debug: bool = False,
     ):
         """Execute the chat command.
 
@@ -41,6 +42,7 @@ class ChatCommand(DocstraCommand):
             session_id: Session ID or alias to use
             log_level: Log level to use
             log_file: Log file path
+            debug: Whether to show debug information
         """
         from docstra.cli.utils import display_header
 
@@ -82,7 +84,7 @@ class ChatCommand(DocstraCommand):
             )
 
             # Chat loop
-            self._run_chat_loop(service, current_session_id)
+            self._run_chat_loop(service, current_session_id, debug)
 
             self.console.print("Chat session ended.")
 
@@ -137,12 +139,13 @@ class ChatCommand(DocstraCommand):
 
         return current_session_id
 
-    def _run_chat_loop(self, service: DocstraService, session_id: str):
+    def _run_chat_loop(self, service: DocstraService, session_id: str, debug: bool = False):
         """Run the main chat loop.
 
         Args:
             service: Service instance
             session_id: Session ID to use
+            debug: Whether to show debug information
         """
         while True:
             try:
@@ -213,6 +216,21 @@ class ChatCommand(DocstraCommand):
                     if resolved_id:
                         session_id = resolved_id
                         session = service.get_session(session_id)
+                        
+                        # Update retriever's context with the session's context files
+                        if hasattr(session, "context_files") and service.retriever:
+                            try:
+                                if hasattr(service.retriever, "set_specific_context_files"):
+                                    if session.context_files:
+                                        service.retriever.set_specific_context_files(session.context_files)
+                                    else:
+                                        service.retriever.clear_specific_context_files()
+                                    self.console.print(
+                                        f"[blue]Using context files: {len(session.context_files)} file(s)[/blue]"
+                                    )
+                            except Exception as e:
+                                self.console.print(f"[yellow]Warning: Could not set context files: {str(e)}[/yellow]")
+                        
                         session_display = session.config.name or session_id[:8] + "..."
                         self.console.print(
                             f"[green]Switched to session: {session_display}[/green]"
@@ -327,11 +345,13 @@ class ChatCommand(DocstraCommand):
                     try:
                         context_files = service.get_context_files(session_id)
                         if not context_files:
-                            self.console.print("[yellow]No files in context[/yellow]")
+                            self.console.print("[yellow]No files in specific context[/yellow]")
+                            self.console.print("[blue]Using all indexed documents for context retrieval[/blue]")
                         else:
-                            self.console.print("[bold]Files in context:[/bold]")
+                            self.console.print("[bold]Files in specific context:[/bold]")
                             for file in context_files:
                                 self.console.print(f"  {file}")
+                            self.console.print("\n[blue]Note: Retrieval will prioritize these files. When no files are specified, all indexed documents are used.[/blue]")
                     except Exception as e:
                         self.console.print(f"[red]Error listing files: {str(e)}[/red]")
                     continue
@@ -358,7 +378,7 @@ class ChatCommand(DocstraCommand):
                     continue
 
                 # Process regular message with streaming
-                self.run_async(self.stream_response(service, session_id, user_input))
+                self.run_async(self.stream_response(service, session_id, user_input, debug=debug))
 
             except KeyboardInterrupt:
                 if Confirm.ask("\nDo you want to exit?"):
@@ -373,7 +393,8 @@ class ChatCommand(DocstraCommand):
 @click.option("--session", "-s", help="Session ID or alias to use")
 @click.option("--log-level", help="Log level (DEBUG, INFO, WARNING, ERROR, CRITICAL)")
 @click.option("--log-file", help="Path to log file")
-def chat(dir_path, session, log_level, log_file):
+@click.option("--debug", is_flag=True, help="Show debug information including prompts and full responses")
+def chat(dir_path, session, log_level, log_file, debug):
     """Start a chat session with Docstra in the specified directory."""
     command = ChatCommand(working_dir=dir_path)
-    command.execute(session_id=session, log_level=log_level, log_file=log_file)
+    command.execute(session_id=session, log_level=log_level, log_file=log_file, debug=debug)
