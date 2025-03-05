@@ -46,6 +46,11 @@ class ContextAdd(BaseModel):
     selection_range: Optional[Dict[str, int]] = None
 
 
+class QueryRequest(BaseModel):
+    question: str
+    files: Optional[List[str]] = None
+
+
 class ConfigUpdate(BaseModel):
     model_name: Optional[str] = None
     temperature: Optional[float] = None
@@ -269,6 +274,85 @@ async def get_messages(session_id: str, service: DocstraService = Depends(get_se
         raise HTTPException(status_code=404, detail="Session not found")
 
     return session.messages
+
+
+@app.post("/query", response_model=dict)
+async def query_codebase(
+    query_request: QueryRequest,
+    request: Request,
+    service: DocstraService = Depends(get_service),
+):
+    """Query the codebase about a specific question, optionally with file context."""
+    # Create a new session
+    session_id = service.create_session()
+    
+    # Add file contexts if provided
+    if query_request.files:
+        for file_path in query_request.files:
+            try:
+                service.add_context(session_id, file_path)
+            except Exception as e:
+                # Log but continue if a file can't be added
+                print(f"Warning: could not add file {file_path}: {str(e)}")
+    
+    # Process the query
+    response = service.process_message(session_id, query_request.question)
+    
+    # Return the response along with the session_id for potential follow-up
+    return {
+        "response": response,
+        "session_id": session_id
+    }
+
+
+@app.post("/query/stream")
+async def query_codebase_stream(
+    query_request: QueryRequest,
+    request: Request,
+    service: DocstraService = Depends(get_service),
+):
+    """Stream a response for a codebase query using server-sent events."""
+    # Create a new session
+    session_id = service.create_session()
+    
+    # Add file contexts if provided
+    if query_request.files:
+        for file_path in query_request.files:
+            try:
+                service.add_context(session_id, file_path)
+            except Exception as e:
+                # Log but continue if a file can't be added
+                print(f"Warning: could not add file {file_path}: {str(e)}")
+    
+    async def event_generator():
+        try:
+            # Send the session_id as first event
+            yield f"event: session\ndata: {session_id}\n\n"
+            
+            # Stream response
+            async for chunk in service.process_message_stream(
+                session_id, query_request.question
+            ):
+                # Format as a server-sent event
+                yield f"data: {chunk}\n\n"
+
+            # Send a done event to signal completion
+            yield "event: done\ndata: \n\n"
+        except Exception as e:
+            # Send an error event
+            error_msg = str(e).replace("\n", "\\n")
+            yield f"event: error\ndata: {error_msg}\n\n"
+
+    # Return a streaming response with SSE media type
+    return Response(
+        content=event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",  # Disable buffering for Nginx
+        },
+    )
 
 
 @app.get("/health", status_code=status.HTTP_200_OK)
