@@ -11,7 +11,7 @@ from docstra.api import start_server
 
 class ServeCommand(DocstraCommand):
     """Command to start the Docstra API server."""
-    
+
     def execute(
         self,
         host: str = "127.0.0.1",
@@ -20,7 +20,7 @@ class ServeCommand(DocstraCommand):
         log_file: str = None,
     ):
         """Execute the serve command.
-        
+
         Args:
             host: Host to bind to
             port: Port to bind to
@@ -49,12 +49,14 @@ class ServeCommand(DocstraCommand):
 
 
 @click.command("serve")
-@click.argument("dir_path", default=".", type=click.Path(exists=True))
+@click.option(
+    "--dir", default=".", type=click.Path(exists=True), help="Directory to serve"
+)
 @click.option("--host", default="127.0.0.1", help="Host to bind to")
 @click.option("--port", default=8000, type=int, help="Port to bind to")
 @click.option("--log-level", help="Log level (DEBUG, INFO, WARNING, ERROR, CRITICAL)")
 @click.option("--log-file", help="Path to log file")
-def serve(dir_path, host, port, log_level, log_file):
+def serve(dir, host, port, log_level, log_file):
     """Start the Docstra API server in the specified directory."""
-    command = ServeCommand(working_dir=dir_path)
+    command = ServeCommand(working_dir=dir)
     command.execute(host=host, port=port, log_level=log_level, log_file=log_file)
