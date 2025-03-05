@@ -35,22 +35,22 @@ def get_config_path(working_dir: str) -> Path:
     """Get the path to the config file.
     
     This checks for configuration in two locations:
-    1. docstra.json in the root directory (preferred)
-    2. .docstra/config.json (fallback for backward compatibility)
+    1. .docstra/config.json (preferred)
+    2. docstra.json in the root directory (legacy support)
     
     Args:
         working_dir: Base working directory
         
     Returns:
-        Path to the config file (either root or .docstra folder)
+        Path to the config file (either .docstra folder or root)
     """
-    # First check for root config
-    root_config = Path(working_dir) / "docstra.json"
-    if root_config.exists():
-        return root_config
+    # First check for .docstra/config.json
+    dotconfig_path = get_docstra_dir(working_dir) / "config.json"
+    if dotconfig_path.exists():
+        return dotconfig_path
         
-    # Fall back to .docstra/config.json
-    return get_docstra_dir(working_dir) / "config.json"
+    # Fall back to root config (legacy support)
+    return Path(working_dir) / "docstra.json"
 
 
 def resolve_relative_path(base_dir: str, file_path: str) -> str:
@@ -72,8 +72,8 @@ def is_docstra_initialized(working_dir: str) -> bool:
     """Check if Docstra is initialized in the directory.
     
     Docstra is considered initialized if either:
-    1. A docstra.json file exists in the working directory (preferred approach)
-    2. A .docstra/config.json file exists (backwards compatibility)
+    1. A .docstra/config.json file exists (preferred approach)
+    2. A docstra.json file exists in the working directory (legacy support)
     
     Args:
         working_dir: Directory to check
@@ -81,14 +81,14 @@ def is_docstra_initialized(working_dir: str) -> bool:
     Returns:
         True if initialized, False otherwise
     """
-    # Check for root config
-    root_config = Path(working_dir) / "docstra.json"
-    if root_config.exists():
+    # Check for .docstra/config.json
+    dotconfig_path = get_docstra_dir(working_dir) / "config.json"
+    if dotconfig_path.exists():
         return True
         
-    # Check for .docstra/config.json
-    legacy_config = get_docstra_dir(working_dir) / "config.json"
-    return legacy_config.exists()
+    # Check for legacy root config
+    root_config = Path(working_dir) / "docstra.json"
+    return root_config.exists()
 
 
 def suggest_file_paths(partial_path: str, working_dir: str) -> List[str]:

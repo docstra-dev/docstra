@@ -49,6 +49,26 @@ class DocstraLLMChain:
 
     def _init_llm(self) -> None:
         """Initialize the LLM and related components."""
+        # Verify that we have API keys loaded from environment variables
+        import os
+        
+        # Check for OpenAI API key if using OpenAI
+        if self.config.model_provider.lower() == 'openai' and not os.environ.get('OPENAI_API_KEY'):
+            # Try to load from .env file directly as a fallback
+            env_file = self.working_dir / ".docstra" / ".env"
+            if env_file.exists():
+                from dotenv import load_dotenv
+                load_dotenv(env_file)
+                self.logger.debug(f"Loaded environment variables from {env_file}")
+            
+            # Verify API key is now available
+            if not os.environ.get('OPENAI_API_KEY'):
+                self.logger.error("OPENAI_API_KEY not found in environment variables")
+                raise ValueError(
+                    "OpenAI API key not found. Please set OPENAI_API_KEY environment variable "
+                    "or add it to .docstra/.env file."
+                )
+        
         self.llm = ChatOpenAI(
             model_name=self.config.model_name,
             temperature=self.config.temperature,

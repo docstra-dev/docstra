@@ -4,7 +4,7 @@ import os
 import click
 from pathlib import Path
 
-from rich.prompt import Confirm
+from rich.prompt import Confirm, Prompt
 
 from docstra.config import DocstraConfig
 from docstra.service import DocstraService
@@ -94,11 +94,42 @@ class InitCommand(DocstraCommand):
                 # Initialize service
                 service = DocstraService(working_dir=str(self.working_dir))
 
-                # Save the config to both locations
-                # 2. Root location (new approach)
-                root_config_path = Path(self.working_dir) / "docstra.json"
-                config.to_file(str(root_config_path))
-
+                # Save the config to .docstra/config.json
+                docstra_dir = Path(self.working_dir) / ".docstra"
+                docstra_dir.mkdir(exist_ok=True, parents=True)
+                config_path = docstra_dir / "config.json"
+                config.to_file(str(config_path))
+                
+                # Setup .env file in .docstra directory
+                env_file = docstra_dir / ".env"
+                
+                # Create or update .env file
+                if not env_file.exists():
+                    self.console.print("\n[bold]Setting up environment variables[/bold]")
+                    
+                    # Check for API keys and prompt if not set
+                    if "OPENAI_API_KEY" not in os.environ and config.model_provider == "openai":
+                        openai_key = Prompt.ask(
+                            "Enter your OpenAI API key",
+                            password=True,
+                            default=""
+                        )
+                        if openai_key:
+                            with open(env_file, "a") as f:
+                                f.write(f"OPENAI_API_KEY={openai_key}\n")
+                    
+                    if "ANTHROPIC_API_KEY" not in os.environ and config.model_provider == "anthropic":
+                        anthropic_key = Prompt.ask(
+                            "Enter your Anthropic API key",
+                            password=True,
+                            default=""
+                        )
+                        if anthropic_key:
+                            with open(env_file, "a") as f:
+                                f.write(f"ANTHROPIC_API_KEY={anthropic_key}\n")
+                    
+                    self.console.print(f"[green]Environment file created at [bold]{env_file}[/bold][/green]")
+                
                 # Create a default session
                 session_id = service.create_session()
 
@@ -108,11 +139,19 @@ class InitCommand(DocstraCommand):
                 # No automatic indexing during initialization
                 # Files will be indexed when referenced or added explicitly
 
+            env_file = Path(self.working_dir) / ".docstra" / ".env"
+            env_file_msg = f"- [bold]{env_file}[/bold] (environment variables)" if env_file.exists() else ""
+            
+            # Check if legacy config exists
+            legacy_config_path = Path(self.working_dir) / "docstra.json"
+            legacy_msg = f"- [bold]{legacy_config_path}[/bold] (legacy, will be ignored)" if legacy_config_path.exists() else ""
+            
             self.display_success(
                 f"✅ Docstra initialized successfully!\n\n"
                 f"Configuration saved to:\n"
-                f"- [bold]{root_config_path}[/bold] (primary location)\n"
-                f"- [bold]{config_path}[/bold] (legacy support)\n\n"
+                f"- [bold]{config_path}[/bold] (primary location)\n"
+                f"{legacy_msg}\n"
+                f"{env_file_msg}\n\n"
                 f"Created default session: [bold]{session_id}[/bold]",
                 title="Success",
             )

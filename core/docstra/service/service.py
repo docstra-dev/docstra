@@ -85,12 +85,18 @@ class DocstraService:
         """
         # Set working directory first
         self.working_dir = Path(working_dir) if working_dir else Path.cwd()
+        
+        # Ensure we load the .env file explicitly to address environment variable issues
+        env_file = self.working_dir / ".docstra" / ".env"
+        if env_file.exists():
+            from dotenv import load_dotenv
+            load_dotenv(env_file)
 
         # Load configuration with proper precedence:
         # 1. Explicit config_path parameter (if provided)
         # 2. Environment variables
-        # 3. docstra.json in repo root
-        # 4. .docstra/config.json
+        # 3. .docstra/config.json
+        # 4. docstra.json in repo root (legacy support)
         # 5. Default values
         if config_path:
             # If explicit config path provided, use it directly

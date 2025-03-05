@@ -4,6 +4,8 @@ import os
 from pathlib import Path
 from typing import Optional, Union, List
 
+from dotenv import load_dotenv
+
 from docstra.errors import ConfigError
 
 
@@ -39,6 +41,7 @@ class DocstraConfig:
         # Indexing options
         max_indexing_workers: int = None,  # Parallelism for indexing, None = auto
         dependency_tracking: bool = True,  # Track file relationships
+        lazy_indexing: bool = False,  # Whether to use lazy (on-demand) indexing
     ):
         """Initialize configuration.
 
@@ -56,10 +59,12 @@ class DocstraConfig:
             log_level: Logging level
             log_file: Path to log file
             console_logging: Whether to log to console
-            lazy_indexing: Whether to use lazy (on-demand) indexing
             excluded_patterns: List of glob patterns to exclude from indexing
             included_extensions: List of file extensions to include in indexing
             name: Optional name for this configuration
+            max_indexing_workers: Number of workers for parallel indexing (None = auto)
+            dependency_tracking: Whether to track file relationships
+            lazy_indexing: Whether to use lazy (on-demand) indexing
         """
         self.model_provider = model_provider
         self.model_name = model_name
@@ -114,15 +119,32 @@ class DocstraConfig:
         # Indexing properties
         self.max_indexing_workers = max_indexing_workers
         self.dependency_tracking = dependency_tracking
+        self.lazy_indexing = lazy_indexing
+
+    @classmethod
+    def _load_env_file(cls, working_dir: Union[str, Path]) -> None:
+        """Load environment variables from .docstra/.env file.
+        
+        Args:
+            working_dir: Working directory containing the .docstra folder
+        """
+        working_dir = Path(working_dir) if working_dir else Path.cwd()
+        env_file = working_dir / ".docstra" / ".env"
+        
+        if env_file.exists():
+            load_dotenv(env_file)
+            logging.debug(f"Loaded environment variables from {env_file}")
+        else:
+            logging.debug(f"No .env file found at {env_file}")
 
     @classmethod
     def load(cls, working_dir: Union[str, Path] = None) -> "DocstraConfig":
         """Load configuration from all available sources with proper precedence.
 
         Configuration is loaded in the following order of precedence (highest to lowest):
-        1. Environment variables
-        2. docstra.json in the current working directory
-        3. .docstra/config.json in the current working directory
+        1. Environment variables (from system and .docstra/.env file)
+        2. .docstra/config.json in the current working directory
+        3. docstra.json in the current working directory (legacy support)
         4. Default values
 
         Args:
@@ -132,11 +154,27 @@ class DocstraConfig:
             A DocstraConfig instance with merged configuration
         """
         working_dir = Path(working_dir) if working_dir else Path.cwd()
+        
+        # First load environment variables from .env file
+        cls._load_env_file(working_dir)
 
         # Start with default config
         config = cls()
 
-        # Try loading from .docstra/config.json
+        # Try loading from legacy docstra.json in root (lowest precedence)
+        root_config_path = working_dir / "docstra.json"
+        if root_config_path.exists():
+            try:
+                root_config = cls.from_file(root_config_path)
+                config = root_config
+                logging.warning(
+                    "Using legacy docstra.json file. This location is deprecated, "
+                    "please use .docstra/config.json instead."
+                )
+            except ConfigError as e:
+                logging.warning(f"Error loading docstra.json: {str(e)}")
+
+        # Try loading from .docstra/config.json (takes precedence over legacy)
         dotconfig_path = working_dir / ".docstra" / "config.json"
         if dotconfig_path.exists():
             try:
@@ -144,15 +182,6 @@ class DocstraConfig:
                 config = dot_config
             except ConfigError as e:
                 logging.warning(f"Error loading .docstra/config.json: {str(e)}")
-
-        # Try loading from repo root docstra.json (takes precedence)
-        root_config_path = working_dir / "docstra.json"
-        if root_config_path.exists():
-            try:
-                root_config = cls.from_file(root_config_path)
-                config = root_config
-            except ConfigError as e:
-                logging.warning(f"Error loading docstra.json: {str(e)}")
 
         # Apply environment variables (highest precedence)
         config = cls._update_from_env(config)

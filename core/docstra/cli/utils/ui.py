@@ -31,8 +31,8 @@ def display_header(subtitle: str = None):
         subtitle: Optional subtitle to display under the header
     """
     header_panel = Panel(
-        Align.center(DOCSTRA_HEADER, vertical="middle", style="orange_red1"),
-        border_style="orange_red1",
+        Align.center(DOCSTRA_HEADER, vertical="middle", style="bright_yellow"),
+        border_style="bright_yellow",
         box=box.ROUNDED,
         padding=(0, 2),
         title="LLM-powered code documentation assistant",
@@ -171,7 +171,7 @@ def show_session_info(service, session_id: str):
         console.print("\n[bold]Recent Messages:[/bold]")
 
         for msg in session.messages[-5:]:  # Last 5 messages
-            role_style = "orange_red1" if msg["role"] == "assistant" else "blue"
+            role_style = "bright_yellow" if msg["role"] == "assistant" else "blue"
             console.print(
                 f"[{role_style}]{msg['role']}[/{role_style}]: {msg['content'][:50]}..."
             )
@@ -188,7 +188,7 @@ def create_spinner(message: str = "Processing..."):
     """
     return Progress(
         SpinnerColumn(),
-        TextColumn(f"[bold orange_red1]{message}[/bold orange_red1]"),
+        TextColumn(f"[bold bright_yellow]{message}[/bold bright_yellow]"),
         console=console,
     )
 

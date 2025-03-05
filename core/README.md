@@ -34,6 +34,8 @@ poetry install
 
 Docstra is designed to integrate smoothly into your existing project environment. When run from within an active repository, Docstra creates a dedicated `.docstra` folder in the root directory to store all generated embeddings and essential project files, keeping your documentation assets organized and easily accessible. This `.docstra` folder also houses a `.env` file for environment variables, including the required OpenAI API key. If the user has not yet added an API key, Docstra will prompt for one when the tool is run; the key can also be provided as a command-line argument. Once entered, the key is securely stored in `.docstra/.env`, allowing for streamlined future usage without additional prompts.
 
+The `.env` file in the `.docstra` folder is automatically loaded when Docstra starts, making it the primary location for environment variables like API keys. This ensures your sensitive credentials are kept separate from your code and configuration.
+
 ### Running Docstra
 
 Docstra offers both CLI and FastAPI server options.

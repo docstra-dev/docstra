@@ -50,6 +50,16 @@ class DocstraCommand:
         # Use cached service if already initialized
         if self.service:
             return self.service
+            
+        # Ensure environment variables are loaded from .env file
+        env_file = Path(self.working_dir) / ".docstra" / ".env"
+        if env_file.exists():
+            try:
+                from dotenv import load_dotenv
+                load_dotenv(env_file)
+                self.console.print(f"[green]Loaded environment variables from {env_file}[/green]")
+            except Exception as e:
+                self.console.print(f"[yellow]Warning: Could not load .env file: {str(e)}[/yellow]")
 
         service_args = {"working_dir": str(self.working_dir)}
 
@@ -66,40 +76,40 @@ class DocstraCommand:
 
     def get_config_path(self) -> Path:
         """Get the path to the config file.
-        
+
         This checks for configuration in two locations:
-        1. docstra.json in the root directory (preferred)
-        2. .docstra/config.json (fallback for backward compatibility)
+        1. .docstra/config.json (preferred)
+        2. docstra.json in the root directory (fallback for legacy support)
 
         Returns:
             Path to the configuration file
         """
-        # First check for root config
-        root_config_path = self.working_dir / "docstra.json"
-        if root_config_path.exists():
-            return root_config_path
-            
-        # Fall back to .docstra/config.json
-        return self.working_dir / ".docstra" / "config.json"
+        # First check for .docstra/config.json
+        dotconfig_path = self.working_dir / ".docstra" / "config.json"
+        if dotconfig_path.exists():
+            return dotconfig_path
+
+        # Fall back to root config
+        return self.working_dir / "docstra.json"
 
     def ensure_initialized(self) -> bool:
         """Check if Docstra is initialized in the current directory.
-        
+
         Docstra is considered initialized if either:
-        1. A docstra.json file exists in the working directory (preferred approach)
-        2. A .docstra/config.json file exists (backwards compatibility)
+        1. A .docstra/config.json file exists (preferred approach)
+        2. A docstra.json file exists in the working directory (legacy support)
 
         Returns:
             True if initialized, False otherwise
         """
-        # Check for root config
-        root_config_path = self.working_dir / "docstra.json"
-        if root_config_path.exists():
-            return True
-            
         # Check for .docstra/config.json
-        legacy_config_path = self.working_dir / ".docstra" / "config.json"
-        return legacy_config_path.exists()
+        dotconfig_path = self.working_dir / ".docstra" / "config.json"
+        if dotconfig_path.exists():
+            return True
+
+        # Check for root config (legacy support)
+        root_config_path = self.working_dir / "docstra.json"
+        return root_config_path.exists()
 
     def display_success(self, message: str, title: str = "Success") -> None:
         """Display a success message.
@@ -151,9 +161,9 @@ class DocstraCommand:
         """
         # First, show a spinner while the model is starting to process
         with self.console.status(
-            "[bold orange_red1]Docstra is thinking...[/bold orange_red1]",
+            "[bold bright_yellow]Docstra is thinking...[/bold bright_yellow]",
             spinner="dots",
-            spinner_style="orange_red1",
+            spinner_style="bright_yellow",
         ):
             # Call the service once to start processing
             # We just want to get the first chunk to know the model has started generating
@@ -224,7 +234,7 @@ class DocstraCommand:
             self.console.print("\n-------------------")
 
         # Display the streaming response header
-        self.console.print("\n[bold orange_red1]Docstra[/bold orange_red1]:")
+        self.console.print("\n[bold bright_yellow]Docstra[/bold bright_yellow]:")
 
         # Process the message with streaming
         response = first_chunk  # Start with the first chunk if we got one
