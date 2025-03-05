@@ -228,7 +228,8 @@ class DocstraLLMChain:
             formatted_context = self.context_manager.format_context_with_links(docs)
             return formatted_context
         except Exception as e:
-            self.logger.error(f"Error retrieving context: {str(e)}")
+            self.logger.error(f"Error retrieving context: {e}")
+            # Ensure we return a proper string to avoid concatenation issues
             return f"Error retrieving context: {str(e)}"
 
     def preview_context(self, question: str) -> str:
@@ -250,7 +251,8 @@ class DocstraLLMChain:
 
             return formatted_context
         except Exception as e:
-            self.logger.error(f"Error previewing context: {str(e)}")
+            self.logger.error(f"Error previewing context: {e}")
+            # Ensure we return a proper string to avoid concatenation issues
             return f"Error generating context preview: {str(e)}"
 
     def set_retriever_service(self, service: Any) -> None:

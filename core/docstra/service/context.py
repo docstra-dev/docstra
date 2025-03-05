@@ -43,6 +43,13 @@ class DocstraContextManager:
 
                 # Get line range from metadata if available
                 line_range = doc.metadata.get("line_range")
+                # Handle the case where line_range is stored as a JSON string
+                if isinstance(line_range, str):
+                    try:
+                        import json
+                        line_range = json.loads(line_range)
+                    except (json.JSONDecodeError, ValueError):
+                        line_range = None
 
                 # If no line range in metadata, try to locate content in file
                 if not line_range:
@@ -152,7 +159,9 @@ class DocstraContextManager:
         if selection_range and content:
             lines = content.split("\n")
             start_line = max(0, selection_range.get("startLine", 0))
-            end_line = min(len(lines) - 1, selection_range.get("endLine", len(lines) - 1))
+            end_line = min(
+                len(lines) - 1, selection_range.get("endLine", len(lines) - 1)
+            )
             content = "\n".join(lines[start_line : end_line + 1])
 
         # Add clickable link to file

@@ -95,10 +95,11 @@ class DocstraRetriever(BaseRetriever):
                         self._service.get_or_index_file(file_path)
 
                     # Get documents for this file from vectorstore
+                    max_k = min(5, self._config.max_context_chunks)
                     file_docs = self._vectorstore.similarity_search(
                         query,
                         filter={"file_path": file_path},
-                        k=min(5, self._config.max_context_chunks),
+                        k=max_k,
                     )
 
                     docs.extend(file_docs)
@@ -220,7 +221,7 @@ class DocstraRetriever(BaseRetriever):
                                 )
                     except Exception as e:
                         self._logger.debug(
-                            f"Error searching for file '{reference}': {str(e)}"
+                            f"Error searching for file '{reference}': {e}"
                         )
                 else:
                     self._logger.debug(f"Could not index referenced file '{reference}'")
