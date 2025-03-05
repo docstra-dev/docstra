@@ -78,6 +78,7 @@ class IngestCommand(DocstraCommand):
             )
         except Exception as e:
             import traceback
+
             error_details = traceback.format_exc()
             self.display_error(
                 f"Error ingesting files: {str(e)}\n\nDetails:\n{error_details}",

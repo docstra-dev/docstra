@@ -269,7 +269,11 @@ class DocstraIndexer:
             return []
 
     def _process_files_for_indexing(
-        self, file_paths: List[Path], parallel: bool = True, batch_size: int = 20, force: bool = False
+        self,
+        file_paths: List[Path],
+        parallel: bool = True,
+        batch_size: int = 20,
+        force: bool = False,
     ) -> None:
         """Process a list of files for indexing with support for parallel processing.
 
@@ -500,7 +504,7 @@ class DocstraIndexer:
 
     def get_vectorstore(self) -> Chroma:
         """Get the vector store instance.
-        
+
         Returns:
             The ChromaDB vector store
         """
