@@ -10,7 +10,6 @@ from docstra.config import DocstraConfig
 from docstra.service import DocstraService
 from docstra.cli.base import DocstraCommand
 from docstra.cli.utils import (
-    configure_from_env,
     run_configuration_wizard,
     create_spinner,
     get_config_path,
@@ -51,20 +50,17 @@ class InitCommand(DocstraCommand):
                 return
 
         # Start with base config
-        config = DocstraConfig()
-
-        # Update from environment variables
-        config = configure_from_env(config)
+        config = DocstraConfig.load(self.working_dir)
 
         # Interactive configuration wizard by default, unless skipped
         if not no_wizard:
             try:
-                self.console.print("[bold blue]Starting interactive configuration wizard...[/bold blue]")
-                self.console.print("(Use Ctrl+C to skip and use defaults)\n")
                 config = run_configuration_wizard(config)
                 self.console.print()
             except click.Abort:
-                self.console.print("[yellow]Configuration wizard skipped, using defaults[/yellow]")
+                self.console.print(
+                    "[yellow]Configuration wizard skipped, using defaults[/yellow]"
+                )
 
         # Override with any explicit parameters
         for key, value in kwargs.items():
@@ -91,45 +87,37 @@ class InitCommand(DocstraCommand):
             with create_spinner("Initializing Docstra...") as progress:
                 progress_task = progress.add_task("", total=None)
 
-                # Initialize service
-                service = DocstraService(working_dir=str(self.working_dir))
-
-                # Save the config to .docstra/config.json
+                # Create the .docstra directory and save config
                 docstra_dir = Path(self.working_dir) / ".docstra"
                 docstra_dir.mkdir(exist_ok=True, parents=True)
                 config_path = docstra_dir / "config.json"
                 config.to_file(str(config_path))
-                
+
                 # Setup .env file in .docstra directory
                 env_file = docstra_dir / ".env"
-                
-                # Create or update .env file
+
+                # Create the env file if it doesn't exist
                 if not env_file.exists():
-                    self.console.print("\n[bold]Setting up environment variables[/bold]")
-                    
-                    # Check for API keys and prompt if not set
-                    if "OPENAI_API_KEY" not in os.environ and config.model_provider == "openai":
-                        openai_key = Prompt.ask(
-                            "Enter your OpenAI API key",
-                            password=True,
-                            default=""
-                        )
-                        if openai_key:
-                            with open(env_file, "a") as f:
-                                f.write(f"OPENAI_API_KEY={openai_key}\n")
-                    
-                    if "ANTHROPIC_API_KEY" not in os.environ and config.model_provider == "anthropic":
-                        anthropic_key = Prompt.ask(
-                            "Enter your Anthropic API key",
-                            password=True,
-                            default=""
-                        )
-                        if anthropic_key:
-                            with open(env_file, "a") as f:
-                                f.write(f"ANTHROPIC_API_KEY={anthropic_key}\n")
-                    
-                    self.console.print(f"[green]Environment file created at [bold]{env_file}[/bold][/green]")
-                
+                    env_file.touch()
+                else:
+                    # Ensure env file ends with a newline if we're going to append
+                    content = env_file.read_text()
+                    if content and not content.endswith("\n"):
+                        with open(env_file, "a") as f:
+                            f.write("\n")
+
+                # Load existing env file to check for API keys
+                if env_file.exists():
+                    from dotenv import load_dotenv
+
+                    load_dotenv(env_file)
+
+                # Always prompt for API keys if not set in environment
+                env_updated = self._setup_api_keys(env_file, config.model_provider)
+
+                # Initialize service AFTER setting up API keys
+                service = DocstraService(working_dir=str(self.working_dir))
+
                 # Create a default session
                 session_id = service.create_session()
 
@@ -139,13 +127,22 @@ class InitCommand(DocstraCommand):
                 # No automatic indexing during initialization
                 # Files will be indexed when referenced or added explicitly
 
+            # Always include env file in the success message if it exists
             env_file = Path(self.working_dir) / ".docstra" / ".env"
-            env_file_msg = f"- [bold]{env_file}[/bold] (environment variables)" if env_file.exists() else ""
-            
+            env_file_msg = (
+                f"- [bold]{env_file}[/bold] (environment variables)"
+                if env_file.exists()
+                else ""
+            )
+
             # Check if legacy config exists
             legacy_config_path = Path(self.working_dir) / "docstra.json"
-            legacy_msg = f"- [bold]{legacy_config_path}[/bold] (legacy, will be ignored)" if legacy_config_path.exists() else ""
-            
+            legacy_msg = (
+                f"- [bold]{legacy_config_path}[/bold] (legacy, will be ignored)"
+                if legacy_config_path.exists()
+                else ""
+            )
+
             self.display_success(
                 f"✅ Docstra initialized successfully!\n\n"
                 f"Configuration saved to:\n"
@@ -165,6 +162,62 @@ class InitCommand(DocstraCommand):
                 title="Error",
             )
             raise
+
+    def _setup_api_keys(self, env_file: Path, model_provider: str) -> bool:
+        """Set up API keys by prompting user when needed.
+
+        Args:
+            env_file: Path to the .env file
+            model_provider: The selected model provider
+
+        Returns:
+            True if env file was updated, False otherwise
+        """
+        updated = False
+
+        # Prompt for OpenAI API key if needed
+        if model_provider == "openai" and "OPENAI_API_KEY" not in os.environ:
+            self.console.print(
+                "[yellow]OpenAI API key not found in environment variables.[/yellow]"
+            )
+            openai_key = Prompt.ask(
+                "Enter your OpenAI API key", password=True, default=""
+            )
+            if openai_key:
+                with open(env_file, "a") as f:
+                    f.write(f"OPENAI_API_KEY={openai_key}\n")
+                os.environ["OPENAI_API_KEY"] = openai_key
+                updated = True
+                self.console.print(
+                    "[green]OpenAI API key saved to environment file.[/green]"
+                )
+
+        # Prompt for Anthropic API key if needed
+        if model_provider == "anthropic" and "ANTHROPIC_API_KEY" not in os.environ:
+            self.console.print(
+                "[yellow]Anthropic API key not found in environment variables.[/yellow]"
+            )
+            anthropic_key = Prompt.ask(
+                "Enter your Anthropic API key", password=True, default=""
+            )
+            if anthropic_key:
+                with open(env_file, "a") as f:
+                    f.write(f"ANTHROPIC_API_KEY={anthropic_key}\n")
+                os.environ["ANTHROPIC_API_KEY"] = anthropic_key
+                updated = True
+                self.console.print(
+                    "[green]Anthropic API key saved to environment file.[/green]"
+                )
+
+        # Add more providers here as needed
+
+        if updated:
+            # Reload env vars to make them available for the current session
+            from dotenv import load_dotenv
+
+            load_dotenv(env_file)
+
+        return updated
 
     def show_config(self):
         """Show the current configuration."""
@@ -201,11 +254,21 @@ class InitCommand(DocstraCommand):
 @click.option("--log-level", help="Log level (DEBUG, INFO, WARNING, ERROR, CRITICAL)")
 @click.option("--log-file", help="Path to log file")
 @click.option("--no-console-log", is_flag=True, help="Disable console logging")
-@click.option("--no-wizard", is_flag=True, help="Skip interactive configuration wizard (use defaults)")
+@click.option(
+    "--no-wizard",
+    is_flag=True,
+    help="Skip interactive configuration wizard (use defaults)",
+)
 @click.option("--model-name", help="Model name to use")
 @click.option("--temperature", type=float, help="Model temperature (0.0-1.0)")
-@click.option("--no-lazy-indexing", is_flag=True, help="Disable lazy indexing mode (indexes all files upfront)")
-@click.option("--no-file-watching", is_flag=True, help="Disable automatic file watching")
+@click.option(
+    "--no-lazy-indexing",
+    is_flag=True,
+    help="Disable lazy indexing mode (indexes all files upfront)",
+)
+@click.option(
+    "--no-file-watching", is_flag=True, help="Disable automatic file watching"
+)
 def init(dir_path, **kwargs):
     """Initialize Docstra in the specified directory."""
     command = InitCommand(working_dir=dir_path)

@@ -85,12 +85,6 @@ class DocstraService:
         """
         # Set working directory first
         self.working_dir = Path(working_dir) if working_dir else Path.cwd()
-        
-        # Ensure we load the .env file explicitly to address environment variable issues
-        env_file = self.working_dir / ".docstra" / ".env"
-        if env_file.exists():
-            from dotenv import load_dotenv
-            load_dotenv(env_file)
 
         # Load configuration with proper precedence:
         # 1. Explicit config_path parameter (if provided)
@@ -300,7 +294,7 @@ class DocstraService:
         """Extract file references from the message (simplified version).
 
         In the simplified workflow, all files are already indexed upfront,
-        so this method now just logs found references but doesn't 
+        so this method now just logs found references but doesn't
         trigger on-demand indexing.
 
         Args:

@@ -1,102 +1,97 @@
-# Docstra: LLM-Powered Software Documentation Generator & Chatbot
+# Docstra
 
-**Docstra** is an AI-powered tool designed to automatically generate in-depth, contextual documentation for code repositories. Using **LangChain** and **ChromaDB**, Docstra can analyze and link together various elements in a codebase, creating searchable, organized, and meaningful documentation that enhances the developer experience.
+**Docstra** is an AI-powered tool designed to automatically generate in-depth, contextual documentation for code repositories. Leveraging Large Language Models (LLMs) through LangChain and ChromaDB, Docstra analyzes and links together various elements in a codebase, creating searchable, organized, and meaningful documentation that enhances the developer experience.
 
-This project is a component of a master’s thesis at the **University of Oslo**, exploring the potential of Large Language Models (LLMs) in improving software documentation processes.
+This project is part of a Master's Thesis at the **University of Oslo** which will be completed in June 2025. It explores open-source tooling for LLMs and code, with a focus on understanding and code documentation.
 
 ## Key Features
 
-- **Automated Documentation**: Scans and indexes code repositories to generate rich documentation with logical links between files, functions, classes, and modules.
-- **Multi-Platform Accessibility**: Available as a local CLI and a FastAPI server, allowing integration into other applications.
-- **VSCode and IntelliJ Plugin Support**: In development to enable seamless access within popular IDEs.
-- **Electron-based GUI Companion App**: A cross-platform desktop application to view and interact with generated documentation.
-- **LLM-Powered Chatbot**: Provides an interactive way to query the codebase and explore documentation.
+- **Automated Documentation**: Scans and indexes code repositories to generate rich documentation with logical links between files, functions, classes, and modules
+- **LLM-Powered Chatbot**: Provides an interactive way to query the codebase and explore documentation
+- **Contextual Understanding**: Creates connections between different parts of your codebase for more meaningful documentation
+- **Simplified Installation**: Easy to set up and use in any Python environment
+
+## Installation
+
+### Option 1: Install via pip
+
+```bash
+pip install docstra
+```
+
+### Option 2: Install from GitHub release
+
+Download the latest wheel file from the GitHub repository releases and install it:
+
+```bash
+pip install docstra-x.x.x-py3-none-any.whl
+```
 
 ## Getting Started
 
-### Prerequisites
+### 1. Initialize Docstra in your project
 
-- **Python 3.8+**
-- **Poetry** for dependency management. [Install Poetry](https://python-poetry.org/docs/#installation)
-- **OpenAI API Key** for access to LLM features (set up as an environment variable)
-
-### Installation
-
-Clone this repository and install dependencies via Poetry.
+Run the initialization command in your project directory:
 
 ```bash
-git clone https://github.uio.no/docstra/docstra.git
-cd docstra
-poetry install
+docstra init
 ```
 
-### Environment Variables and Project Files
+This will create a `.docstra` directory in your project and prompt you for any required configuration, such as your OpenAI API key.
 
-Docstra is designed to integrate smoothly into your existing project environment. When run from within an active repository, Docstra creates a dedicated `.docstra` folder in the root directory to store all generated embeddings and essential project files, keeping your documentation assets organized and easily accessible. This `.docstra` folder also houses a `.env` file for environment variables, including the required OpenAI API key. If the user has not yet added an API key, Docstra will prompt for one when the tool is run; the key can also be provided as a command-line argument. Once entered, the key is securely stored in `.docstra/.env`, allowing for streamlined future usage without additional prompts.
+### 2. Ingest your codebase
 
-The `.env` file in the `.docstra` folder is automatically loaded when Docstra starts, making it the primary location for environment variables like API keys. This ensures your sensitive credentials are kept separate from your code and configuration.
-
-### Running Docstra
-
-Docstra offers both CLI and FastAPI server options.
-
-#### Command Line Interface (CLI)
-
-Run Docstra directly from the command line:
+Process and generate embeddings for your codebase:
 
 ```bash
-poetry run docstra --help
+docstra ingest
 ```
 
-Example of generating documentation:
+This command scans your repository, analyzes the code, and creates a searchable index of your codebase components.
+
+### 3. Interact with your documentation
+
+#### Chat mode
+
+Start an interactive chat session to explore your codebase:
 
 ```bash
-poetry run docstra generate-docs path/to/your/codebase
+docstra chat
 ```
 
-#### FastAPI Server
+This launches a conversational interface where you can ask questions about your code.
 
-To access Docstra as an API service, start the FastAPI server:
+#### Query mode
+
+Ask specific questions directly from the command line:
 
 ```bash
-poetry run uvicorn docstra.server:app --reload
+docstra query "How does the authentication system work?"
 ```
 
-Access the API documentation at `http://127.0.0.1:8000/docs` (Swagger UI).
+## Environment Variables
 
-## Usage
+Docstra looks for a `.env` file in the `.docstra` directory or for environment variables:
 
-Docstra can process entire repositories or selected folders and files. It will extract structured metadata for each code component, allowing cross-referenced links for easy navigation and searchability.
+- `OPENAI_API_KEY`: Your OpenAI API key (required for LLM functionality)
 
-### Querying Documentation
+## Use Cases
 
-The CLI offers a `query` command, allowing for specific questions about the codebase:
-
-```bash
-poetry run docstra query "How does authentication work?"
-```
-
-With the FastAPI server, you can send `POST` requests to `/query` with your question in the payload for direct querying from other applications.
-
-## Plugin and GUI Support
-
-- **VSCode and IntelliJ Plugins** (in development): Access Docstra documentation within the editor for a seamless development experience.
-- **Electron-based Desktop App** (coming soon): A graphical interface for non-technical users to explore codebase documentation.
-
-### Roadmap
-
-- Integrate interactive LLM-based chatbot for conversational documentation
-- Expand plugin support for major IDEs
-- Develop Electron-based desktop application
+- **Onboarding New Developers**: Help new team members quickly understand complex codebases
+- **Code Discovery**: Easily find how different components interact within your project
+- **Documentation Maintenance**: Keep documentation up-to-date with minimal effort
+- **Knowledge Exploration**: Explore codebases through natural language queries
 
 ## License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+This project is licensed under the MIT License - see the LICENSE file for details.
 
 ## Contact
 
-For questions or feedback, please reach out to the project team at the **University of Oslo**. This project is an academic exploration into LLM-based developer tools aimed at improving the efficiency and accessibility of code documentation.
+For questions or feedback about Docstra, please reach out to the project team at the **University of Oslo**.
 
 **Project Repository**: [https://github.uio.no/docstra/docstra](https://github.uio.no/docstra/docstra)
 
-This README provides a quick start guide to get up and running with Docstra, along with a look at the upcoming features and development goals of the project. Docstra is continually evolving to meet the needs of developers, researchers, and educators in the field of software engineering.
+---
+
+Docstra is continually evolving to better serve developers, researchers, and educators in the field of software engineering. The project aims to bridge the gap between code and documentation through the power of Large Language Models.

@@ -20,7 +20,6 @@ from docstra.cli.utils.paths import (
 )
 
 from docstra.cli.utils.config import (
-    configure_from_env,
     run_configuration_wizard,
     save_session_alias,
     get_session_aliases,
@@ -31,6 +30,10 @@ from docstra.cli.utils.config import (
 from docstra.cli.utils.session_utils import (
     get_user_input,
     select_session,
+)
+
+from docstra.cli.utils.keys import (
+    ensure_api_keys,
 )
 
 __all__ = [
@@ -50,7 +53,6 @@ __all__ = [
     "is_docstra_initialized",
     "suggest_file_paths",
     # Config utils
-    "configure_from_env",
     "run_configuration_wizard",
     "save_session_alias",
     "get_session_aliases",
@@ -59,4 +61,6 @@ __all__ = [
     # Session utils
     "get_user_input",
     "select_session",
+    # Key utils
+    "ensure_api_keys",
 ]

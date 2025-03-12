@@ -71,18 +71,18 @@ export class ServerManager {
       }
 
       // Step 4: Check if Docstra is installed
-      // const isInstalled = await checkDocstraInstalled();
-      // if (!isInstalled) {
-      //   const shouldInstall = await this.promptForInstallation();
-      //   if (shouldInstall) {
-      //     await installDocstra();
-      //   } else {
-      //     return false;
-      //   }
-      // }
+      const isInstalled = await checkDocstraInstalled();
+      if (!isInstalled) {
+        const shouldInstall = await this.promptForInstallation();
+        if (shouldInstall) {
+          await installDocstra();
+        } else {
+          return false;
+        }
+      }
 
       // Step 5: Start Docstra server
-      // await this.startDocstraServer(workspaceFolder);
+      await this.startDocstraServer(workspaceFolder);
       return true;
     } catch (error: any) {
       vscode.window.showErrorMessage(

@@ -16,14 +16,15 @@ from langchain_core.documents import Document
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_text_splitters import Language
 
+
 # Import utilities
 # Manual implementation of metadata filtering to avoid dependency issues
 def filter_complex_metadata(metadata):
     """Filter out complex metadata types that ChromaDB doesn't support.
-    
+
     Args:
         metadata: A dictionary of metadata
-        
+
     Returns:
         A dictionary with only primitive types
     """
@@ -56,86 +57,88 @@ def extract_file_references(text: str) -> List[str]:
     """
     # Improved implementation with regex
     references = []
-    
+
     # Pattern for file paths (like "/path/to/file.ext" or "path/to/file.ext")
-    path_pattern = r'(?:\/|\\)?(?:[a-zA-Z0-9_-]+(?:\/|\\))+[a-zA-Z0-9_.-]+'
-    
+    path_pattern = r"(?:\/|\\)?(?:[a-zA-Z0-9_-]+(?:\/|\\))+[a-zA-Z0-9_.-]+"
+
     # Pattern for import-like references (like "import foo.bar" or "from foo.bar import baz")
-    import_pattern = r'(?:from|import)\s+([a-zA-Z0-9_.]+)'
-    
+    import_pattern = r"(?:from|import)\s+([a-zA-Z0-9_.]+)"
+
     # Find all matches for file paths
     for match in re.finditer(path_pattern, text):
         path = match.group(0).strip(",.;:\"'()[]{}")
         if path not in references:
             references.append(path)
-    
+
     # Find all import-like references
     for match in re.finditer(import_pattern, text):
         module = match.group(1).strip()
         if module and module not in references:
             references.append(module)
-    
+
     return references
+
 
 def extract_imports(content: str, language: str) -> List[str]:
     """Extract import statements from code.
-    
+
     Args:
         content: The code content
         language: The programming language
-        
+
     Returns:
         A list of imported modules/packages
     """
     imports = []
-    
+
     if language == Language.PYTHON or language == "python":
         # Python imports: import X, from X import Y
-        import_pattern = r'^\s*import\s+([a-zA-Z0-9_., ]+)(?:\s+as\s+[a-zA-Z0-9_]+)?'
-        from_pattern = r'^\s*from\s+([a-zA-Z0-9_.]+)\s+import\s+'
-        
-        for line in content.split('\n'):
+        import_pattern = r"^\s*import\s+([a-zA-Z0-9_., ]+)(?:\s+as\s+[a-zA-Z0-9_]+)?"
+        from_pattern = r"^\s*from\s+([a-zA-Z0-9_.]+)\s+import\s+"
+
+        for line in content.split("\n"):
             # Check for import statement
             match = re.match(import_pattern, line)
             if match:
                 # Split multiple imports (import os, sys, re)
-                modules = [m.strip() for m in match.group(1).split(',')]
+                modules = [m.strip() for m in match.group(1).split(",")]
                 imports.extend(modules)
                 continue
-                
+
             # Check for from ... import statement
             match = re.match(from_pattern, line)
             if match:
                 imports.append(match.group(1))
-    
+
     elif language in [Language.JS, Language.TS, "javascript", "typescript"]:
         # JavaScript/TypeScript imports
-        import_pattern = r'(?:import|require)\s*\(?[\'\"]([^\'\"]+)[\'\"]'
+        import_pattern = r"(?:import|require)\s*\(?[\'\"]([^\'\"]+)[\'\"]"
         for match in re.finditer(import_pattern, content):
             imports.append(match.group(1))
-    
+
     elif language in ["r", "R"]:
         # R imports: library(pkg), require(pkg), or pkg::func
         pkg_pattern = r'(?:library|require)\s*\(\s*["\']?([a-zA-Z0-9.]+)["\']?\s*\)'
-        namespace_pattern = r'([a-zA-Z0-9.]+)::'
-        
+        namespace_pattern = r"([a-zA-Z0-9.]+)::"
+
         for match in re.finditer(pkg_pattern, content):
             imports.append(match.group(1))
-            
+
         for match in re.finditer(namespace_pattern, content):
             imports.append(match.group(1))
-    
+
     # More languages can be added here as needed
-    
+
     return list(set(imports))  # Return unique imports
+
 
 def extract_code_elements(content: str, language: str) -> Dict[str, List[str]]:
     """Extract code elements like functions, classes, etc.
-    
+
     Args:
         content: The code content
         language: The programming language
-        
+
     Returns:
         Dictionary of code elements by type
     """
@@ -144,42 +147,42 @@ def extract_code_elements(content: str, language: str) -> Dict[str, List[str]]:
         "classes": [],
         "variables": [],
     }
-    
+
     if language == Language.PYTHON or language == "python":
         # Python function definitions
-        function_pattern = r'^\s*def\s+([a-zA-Z0-9_]+)\s*\('
+        function_pattern = r"^\s*def\s+([a-zA-Z0-9_]+)\s*\("
         # Python class definitions
-        class_pattern = r'^\s*class\s+([a-zA-Z0-9_]+)'
+        class_pattern = r"^\s*class\s+([a-zA-Z0-9_]+)"
         # Python top-level variables/constants
-        variable_pattern = r'^\s*([A-Z0-9_]+)\s*='
-        
-        for line in content.split('\n'):
+        variable_pattern = r"^\s*([A-Z0-9_]+)\s*="
+
+        for line in content.split("\n"):
             # Check for function definition
             match = re.match(function_pattern, line)
             if match:
                 elements["functions"].append(match.group(1))
                 continue
-                
+
             # Check for class definition
             match = re.match(class_pattern, line)
             if match:
                 elements["classes"].append(match.group(1))
                 continue
-                
+
             # Check for constant-like variables (uppercase)
             match = re.match(variable_pattern, line)
             if match:
                 elements["variables"].append(match.group(1))
-    
+
     elif language in ["r", "R"]:
         # R function definitions
-        function_pattern = r'([a-zA-Z0-9_.]+)\s*<-\s*function\s*\('
-        
+        function_pattern = r"([a-zA-Z0-9_.]+)\s*<-\s*function\s*\("
+
         for match in re.finditer(function_pattern, content):
             elements["functions"].append(match.group(1))
-    
+
     # More languages can be added here
-    
+
     return elements
 
 
@@ -293,48 +296,8 @@ class DocstraLoader:
             logger: Optional logger for logging messages
         """
         self.working_dir = Path(working_dir)
-        self.included_extensions = included_extensions or [
-            # Programming languages
-            ".py",    # Python
-            ".js",    # JavaScript
-            ".ts",    # TypeScript
-            ".tsx",   # TypeScript React
-            ".jsx",   # JavaScript React
-            ".java",  # Java
-            ".kt",    # Kotlin
-            ".cs",    # C#
-            ".go",    # Go
-            ".rs",    # Rust
-            ".cpp",   # C++
-            ".cc",    # C++
-            ".c",     # C
-            ".h",     # C/C++ header
-            ".hpp",   # C++ header
-            ".r",     # R language
-            ".R",     # R language (uppercase)
-            ".rmd",   # R Markdown
-            ".Rmd",   # R Markdown (mixed case)
-            # Documentation and data formats
-            ".md",    # Markdown
-            ".txt",   # Text files
-            ".json",  # JSON
-            ".yml",   # YAML
-            ".yaml",  # YAML
-            ".toml",  # TOML
-            ".xml",   # XML
-        ]
-        self.excluded_patterns = excluded_patterns or [
-            "**/.git/**",
-            "**/node_modules/**",
-            "**/venv/**",
-            "**/.venv/**",
-            "**/build/**",
-            "**/dist/**",
-            "**/__pycache__/**",
-            "**/.pytest_cache/**",
-            "**/.DS_Store",
-            "**/*.pyc",
-        ]
+        self.included_extensions = included_extensions
+        self.excluded_patterns = excluded_patterns
         self.chunk_size = chunk_size
         self.chunk_overlap = chunk_overlap
         self.logger = logger
@@ -388,13 +351,15 @@ class DocstraLoader:
         # Skip if file doesn't exist
         if not file_path.exists() or not file_path.is_file():
             if self.logger:
-                self.logger.warning(f"File does not exist or is not a file: {file_path}")
+                self.logger.warning(
+                    f"File does not exist or is not a file: {file_path}"
+                )
             return []
 
         try:
             # Determine language based on file extension
             file_language = self.language_map.get(file_path.suffix, "text")
-            
+
             # Read file content directly
             try:
                 with open(file_path, "r", encoding="utf-8", errors="replace") as f:
@@ -408,28 +373,28 @@ class DocstraLoader:
                     if self.logger:
                         self.logger.error(f"Failed to read file {file_path}: {e}, {e2}")
                     return []
-            
+
             if not content:
                 if self.logger:
                     self.logger.warning(f"No content found in {file_path}")
                 return []
-                
+
             # Extract useful information from the content
             rel_path = file_path.relative_to(self.working_dir).as_posix()
             now = datetime.now().isoformat()
             file_stat = file_path.stat()
-            
+
             # Get code structure
             code_elements = extract_code_elements(content, file_language)
             imports = extract_imports(content, file_language)
             references = extract_file_references(content)
-            
+
             # Calculate measurements
             word_count = len(content.split())
             approx_token_count = len(content) // 4  # Rough estimate
             content_hash = hashlib.md5(content.encode("utf-8")).hexdigest()
             file_size_kb = round(file_stat.st_size / 1024, 2)
-            
+
             # Setup common metadata for all chunks
             metadata = {
                 # File info
@@ -438,115 +403,117 @@ class DocstraLoader:
                 "file_name": file_path.name,
                 "file_type": file_path.suffix,
                 "file_size_kb": str(file_size_kb),
-                
                 # Language info
                 "language": str(file_language),
-                
                 # Content metadata
                 "word_count": str(word_count),
                 "approx_tokens": str(approx_token_count),
                 "content_hash": content_hash,
-                
                 # Time information
                 "last_modified": str(datetime.fromtimestamp(file_stat.st_mtime)),
                 "created": str(datetime.fromtimestamp(file_stat.st_ctime)),
                 "indexed_at": now,
-                
                 # Code structure (all stringified)
                 "imports": json.dumps(imports) if imports else "",
                 "references": json.dumps(references) if references else "",
-                "functions": json.dumps(code_elements.get("functions", [])) if code_elements.get("functions") else "",
-                "classes": json.dumps(code_elements.get("classes", [])) if code_elements.get("classes") else "",
-                "variables": json.dumps(code_elements.get("variables", [])) if code_elements.get("variables") else "",
-                
+                "functions": (
+                    json.dumps(code_elements.get("functions", []))
+                    if code_elements.get("functions")
+                    else ""
+                ),
+                "classes": (
+                    json.dumps(code_elements.get("classes", []))
+                    if code_elements.get("classes")
+                    else ""
+                ),
+                "variables": (
+                    json.dumps(code_elements.get("variables", []))
+                    if code_elements.get("variables")
+                    else ""
+                ),
                 # Repository context
                 "repo_root": str(self.working_dir),
                 "repo_relative_path": rel_path,
             }
-            
+
             # Apply text splitting
             chunks = []
             chunk_size = self.chunk_size
             chunk_overlap = self.chunk_overlap
-            
+
             # Use simple line-based chunking
             lines = content.split("\n")
             total_lines = len(lines)
-            
+
             # For very small files, just create a single chunk
             if total_lines < 50 or len(content) < chunk_size:
-                doc = Document(
-                    page_content=content,
-                    metadata=metadata.copy()
-                )
+                doc = Document(page_content=content, metadata=metadata.copy())
                 doc.metadata["chunk_number"] = "1"
                 doc.metadata["total_chunks"] = "1"
                 # Final safety check
                 doc.metadata = filter_complex_metadata(doc.metadata)
                 return [doc]
-            
+
             # For larger files, create overlapping chunks
             current_chunk = []
             current_length = 0
             chunk_num = 1
-            
+
             for i, line in enumerate(lines):
                 current_chunk.append(line)
                 current_length += len(line) + 1  # +1 for the newline
-                
+
                 # Check if we've reached chunk size
                 if current_length >= chunk_size and i < total_lines - 1:
                     # Create document with this chunk
                     chunk_text = "\n".join(current_chunk)
                     chunk_metadata = metadata.copy()
                     chunk_metadata["chunk_number"] = str(chunk_num)
-                    
+
                     # Add line numbers if possible
                     line_start = i - len(current_chunk) + 1
                     line_end = i
                     chunk_metadata["line_range"] = json.dumps([line_start, line_end])
-                    
+
                     # Create the document
-                    doc = Document(
-                        page_content=chunk_text,
-                        metadata=chunk_metadata
-                    )
-                    
+                    doc = Document(page_content=chunk_text, metadata=chunk_metadata)
+
                     chunks.append(doc)
                     chunk_num += 1
-                    
+
                     # Keep overlap lines for next chunk
-                    overlap_lines = int(len(current_chunk) * (chunk_overlap / chunk_size))
-                    current_chunk = current_chunk[-overlap_lines:] if overlap_lines > 0 else []
+                    overlap_lines = int(
+                        len(current_chunk) * (chunk_overlap / chunk_size)
+                    )
+                    current_chunk = (
+                        current_chunk[-overlap_lines:] if overlap_lines > 0 else []
+                    )
                     current_length = sum(len(line) + 1 for line in current_chunk)
-            
+
             # Add the final chunk if there's anything left
             if current_chunk:
                 chunk_text = "\n".join(current_chunk)
                 chunk_metadata = metadata.copy()
                 chunk_metadata["chunk_number"] = str(chunk_num)
-                
+
                 # Add line numbers
                 line_start = total_lines - len(current_chunk)
                 line_end = total_lines - 1
                 chunk_metadata["line_range"] = json.dumps([line_start, line_end])
-                
-                doc = Document(
-                    page_content=chunk_text,
-                    metadata=chunk_metadata
-                )
+
+                doc = Document(page_content=chunk_text, metadata=chunk_metadata)
                 chunks.append(doc)
-            
+
             # Update total_chunks in all documents
             total_chunks = len(chunks)
             for doc in chunks:
                 doc.metadata["total_chunks"] = str(total_chunks)
-                
+
                 # Final safety check - ensure all values are primitive types
                 doc.metadata = filter_complex_metadata(doc.metadata)
-            
+
             return chunks
-            
+
         except Exception as e:
             if self.logger:
                 error_details = traceback.format_exc()
@@ -559,70 +526,63 @@ class DocstraLoader:
         Returns:
             List of file paths that match the criteria
         """
+        import pathspec
+        
+        # Convert excluded patterns to pathspec
+        # pathspec uses .gitignore style patterns which are compatible with our patterns
+        spec = pathspec.PathSpec.from_lines(
+            pathspec.patterns.GitWildMatchPattern, self.excluded_patterns or []
+        )
+        
         collected_files = []
-
-        for root, _, files in os.walk(self.working_dir):
+        
+        for root, dirs, files in os.walk(self.working_dir):
             root_path = Path(root)
-
-            # Skip excluded directories
-            if self._is_excluded_directory(root_path):
+            rel_root = root_path.relative_to(self.working_dir).as_posix()
+            
+            # Skip this directory if it matches an excluded pattern
+            # For root directory, use empty string instead of '.'
+            dir_to_check = "" if rel_root == "." else rel_root
+            if dir_to_check and spec.match_file(dir_to_check):
+                # Remove this directory from dirs to prevent os.walk from descending into it
+                if self.logger:
+                    self.logger.debug(f"Skipping excluded directory: {rel_root}")
+                dirs.clear()  # This prevents os.walk from descending into subdirs
                 continue
-
+                
+            # Filter directories to skip any that match excluded patterns
+            # This is more efficient than clearing dirs after matching
+            i = 0
+            while i < len(dirs):
+                dir_path = f"{rel_root}/{dirs[i]}" if rel_root else dirs[i]
+                if spec.match_file(dir_path):
+                    if self.logger:
+                        self.logger.debug(f"Skipping excluded directory: {dir_path}")
+                    dirs.pop(i)  # Remove and don't increment i
+                else:
+                    i += 1  # Only increment if we didn't remove
+            
             # Check each file
             for file in files:
                 file_path = root_path / file
-                if self._should_include(file_path):
-                    collected_files.append(file_path)
-
+                rel_path = file_path.relative_to(self.working_dir).as_posix()
+                
+                # First check if the file has an included extension
+                if not self.included_extensions or file_path.suffix in self.included_extensions:
+                    # Then check if it matches any excluded pattern
+                    if not spec.match_file(rel_path):
+                        collected_files.append(file_path)
+                    elif self.logger:
+                        self.logger.debug(f"Skipping excluded file: {rel_path}")
+                    
         return collected_files
-
-    def _is_excluded_directory(self, path: Path) -> bool:
-        """Check if a directory should be skipped.
-
-        Args:
-            path: Directory path to check
-
-        Returns:
-            True if the directory should be excluded
-        """
-        rel_path = path.relative_to(self.working_dir).as_posix()
-
-        for pattern in self.excluded_patterns:
-            # Handle directory patterns that might end with /**
-            dir_pattern = pattern.rstrip("/**")
-            if fnmatch.fnmatch(rel_path, dir_pattern):
-                return True
-
-        return False
-
-    def _should_include(self, file_path: Path) -> bool:
-        """Check if a file should be included based on extension and excluded patterns.
-
-        Args:
-            file_path: File path to check
-
-        Returns:
-            True if the file should be included
-        """
-        # First check extension
-        if file_path.suffix not in self.included_extensions:
-            return False
-
-        # Then check excluded patterns
-        rel_path = file_path.relative_to(self.working_dir).as_posix()
-
-        for pattern in self.excluded_patterns:
-            if fnmatch.fnmatch(rel_path, pattern):
-                return False
-
-        return True
 
     def _enhance_metadata(self, doc: Document, file_path: Path) -> None:
         """Attach useful metadata to a document.
-        
+
         Note: This method is deprecated and no longer used.
         The functionality has been integrated directly into load_file.
-        
+
         Args:
             doc: Document to enhance
             file_path: Path to the source file

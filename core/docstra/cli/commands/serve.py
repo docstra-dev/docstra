@@ -1,10 +1,7 @@
 """API server command for Docstra CLI."""
 
 import click
-from pathlib import Path
 
-from docstra.service import DocstraService
-from docstra.config import DocstraConfig
 from docstra.cli.base import DocstraCommand
 from docstra.api import start_server
 

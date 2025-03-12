@@ -2387,6 +2387,18 @@ files = [
 ]
 
 [[package]]
+name = "pathspec"
+version = "0.12.1"
+description = "Utility library for gitignore style pattern matching of file paths."
+optional = false
+python-versions = ">=3.8"
+groups = ["main"]
+files = [
+    {file = "pathspec-0.12.1-py3-none-any.whl", hash = "sha256:a0d503e138a4c123b27490a4f7beda6a01c6f288df0e4a8b79c7eb0dc7b4cc08"},
+    {file = "pathspec-0.12.1.tar.gz", hash = "sha256:a482d51503a1ab33b1c67a6c3813a26953dbdc71c31dacaef9a838c4e29f5712"},
+]
+
+[[package]]
 name = "posthog"
 version = "3.18.1"
 description = "Integrate PostHog into any python application."
@@ -4347,4 +4359,4 @@ cffi = ["cffi (>=1.11)"]
 [metadata]
 lock-version = "2.1"
 python-versions = "^3.12"
-content-hash = "5ce218b07ec21faff69799205583f67839a6a8dfb7314b8b3b8c4b66df5a9608"
+content-hash = "ea942df00a86c3c8f2d28512a07a0ed7e96e5791f8f69668d0046c081bb7593e"

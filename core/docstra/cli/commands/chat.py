@@ -2,12 +2,9 @@
 
 import os
 import click
-import asyncio
 from pathlib import Path
 
 from rich.prompt import Confirm
-from rich.markdown import Markdown
-from rich.live import Live
 
 from docstra.service import DocstraService
 from docstra.config import DocstraConfig
@@ -59,6 +56,13 @@ class ChatCommand(DocstraCommand):
                 config.log_level = log_level
             if log_file:
                 config.log_file = log_file
+
+            # Check for required API keys before initializing service
+            if not self.ensure_api_keys(config.model_provider):
+                self.console.print(
+                    "[red]Failed to set required API keys. Aborting.[/red]"
+                )
+                return
 
             # Initialize service with modified config
             service = self.initialize_service(str(config_path))
@@ -139,7 +143,9 @@ class ChatCommand(DocstraCommand):
 
         return current_session_id
 
-    def _run_chat_loop(self, service: DocstraService, session_id: str, debug: bool = False):
+    def _run_chat_loop(
+        self, service: DocstraService, session_id: str, debug: bool = False
+    ):
         """Run the main chat loop.
 
         Args:
@@ -216,21 +222,27 @@ class ChatCommand(DocstraCommand):
                     if resolved_id:
                         session_id = resolved_id
                         session = service.get_session(session_id)
-                        
+
                         # Update retriever's context with the session's context files
                         if hasattr(session, "context_files") and service.retriever:
                             try:
-                                if hasattr(service.retriever, "set_specific_context_files"):
+                                if hasattr(
+                                    service.retriever, "set_specific_context_files"
+                                ):
                                     if session.context_files:
-                                        service.retriever.set_specific_context_files(session.context_files)
+                                        service.retriever.set_specific_context_files(
+                                            session.context_files
+                                        )
                                     else:
                                         service.retriever.clear_specific_context_files()
                                     self.console.print(
                                         f"[blue]Using context files: {len(session.context_files)} file(s)[/blue]"
                                     )
                             except Exception as e:
-                                self.console.print(f"[yellow]Warning: Could not set context files: {str(e)}[/yellow]")
-                        
+                                self.console.print(
+                                    f"[yellow]Warning: Could not set context files: {str(e)}[/yellow]"
+                                )
+
                         session_display = session.config.name or session_id[:8] + "..."
                         self.console.print(
                             f"[green]Switched to session: {session_display}[/green]"
@@ -345,13 +357,21 @@ class ChatCommand(DocstraCommand):
                     try:
                         context_files = service.get_context_files(session_id)
                         if not context_files:
-                            self.console.print("[yellow]No files in specific context[/yellow]")
-                            self.console.print("[blue]Using all indexed documents for context retrieval[/blue]")
+                            self.console.print(
+                                "[yellow]No files in specific context[/yellow]"
+                            )
+                            self.console.print(
+                                "[blue]Using all indexed documents for context retrieval[/blue]"
+                            )
                         else:
-                            self.console.print("[bold]Files in specific context:[/bold]")
+                            self.console.print(
+                                "[bold]Files in specific context:[/bold]"
+                            )
                             for file in context_files:
                                 self.console.print(f"  {file}")
-                            self.console.print("\n[blue]Note: Retrieval will prioritize these files. When no files are specified, all indexed documents are used.[/blue]")
+                            self.console.print(
+                                "\n[blue]Note: Retrieval will prioritize these files. When no files are specified, all indexed documents are used.[/blue]"
+                            )
                     except Exception as e:
                         self.console.print(f"[red]Error listing files: {str(e)}[/red]")
                     continue
@@ -378,7 +398,9 @@ class ChatCommand(DocstraCommand):
                     continue
 
                 # Process regular message with streaming
-                self.run_async(self.stream_response(service, session_id, user_input, debug=debug))
+                self.run_async(
+                    self.stream_response(service, session_id, user_input, debug=debug)
+                )
 
             except KeyboardInterrupt:
                 if Confirm.ask("\nDo you want to exit?"):
@@ -393,8 +415,14 @@ class ChatCommand(DocstraCommand):
 @click.option("--session", "-s", help="Session ID or alias to use")
 @click.option("--log-level", help="Log level (DEBUG, INFO, WARNING, ERROR, CRITICAL)")
 @click.option("--log-file", help="Path to log file")
-@click.option("--debug", is_flag=True, help="Show debug information including prompts and full responses")
+@click.option(
+    "--debug",
+    is_flag=True,
+    help="Show debug information including prompts and full responses",
+)
 def chat(dir_path, session, log_level, log_file, debug):
     """Start a chat session with Docstra in the specified directory."""
     command = ChatCommand(working_dir=dir_path)
-    command.execute(session_id=session, log_level=log_level, log_file=log_file, debug=debug)
+    command.execute(
+        session_id=session, log_level=log_level, log_file=log_file, debug=debug
+    )

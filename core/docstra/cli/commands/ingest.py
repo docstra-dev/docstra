@@ -41,6 +41,10 @@ class IngestCommand(DocstraCommand):
             service = self.initialize_service()
 
             # Create a loader with the config settings
+            self.console.print("Initializing with excluded patterns:")
+            for pattern in config.excluded_patterns:
+                self.console.print(f"  - {pattern}")
+
             loader = DocstraLoader(
                 working_dir=Path(self.working_dir),
                 included_extensions=config.included_extensions,

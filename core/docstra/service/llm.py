@@ -51,28 +51,72 @@ class DocstraLLMChain:
         """Initialize the LLM and related components."""
         # Verify that we have API keys loaded from environment variables
         import os
-        
-        # Check for OpenAI API key if using OpenAI
-        if self.config.model_provider.lower() == 'openai' and not os.environ.get('OPENAI_API_KEY'):
+
+        # Check for API keys based on the provider
+        if self.config.model_provider.lower() == "openai" and not os.environ.get(
+            "OPENAI_API_KEY"
+        ):
             # Try to load from .env file directly as a fallback
             env_file = self.working_dir / ".docstra" / ".env"
             if env_file.exists():
                 from dotenv import load_dotenv
+
                 load_dotenv(env_file)
                 self.logger.debug(f"Loaded environment variables from {env_file}")
-            
-            # Verify API key is now available
-            if not os.environ.get('OPENAI_API_KEY'):
-                self.logger.error("OPENAI_API_KEY not found in environment variables")
-                raise ValueError(
+
+            # Check again after loading .env
+            if not os.environ.get("OPENAI_API_KEY"):
+                error_msg = (
                     "OpenAI API key not found. Please set OPENAI_API_KEY environment variable "
-                    "or add it to .docstra/.env file."
+                    "or add it to .docstra/.env file.\n"
+                    "You can run 'docstra init' to set up your API key interactively."
                 )
-        
-        self.llm = ChatOpenAI(
-            model_name=self.config.model_name,
-            temperature=self.config.temperature,
-        )
+                self.logger.error("OPENAI_API_KEY not found")
+                raise ValueError(error_msg)
+
+        elif self.config.model_provider.lower() == "anthropic" and not os.environ.get(
+            "ANTHROPIC_API_KEY"
+        ):
+            # Try to load from .env file directly as a fallback
+            env_file = self.working_dir / ".docstra" / ".env"
+            if env_file.exists():
+                from dotenv import load_dotenv
+
+                load_dotenv(env_file)
+                self.logger.debug(f"Loaded environment variables from {env_file}")
+
+            # Check again after loading .env
+            if not os.environ.get("ANTHROPIC_API_KEY"):
+                error_msg = (
+                    "Anthropic API key not found. Please set ANTHROPIC_API_KEY environment variable "
+                    "or add it to .docstra/.env file.\n"
+                    "You can run 'docstra init' to set up your API key interactively."
+                )
+                self.logger.error("ANTHROPIC_API_KEY not found")
+                raise ValueError(error_msg)
+
+        # Initialize the appropriate model
+        if self.config.model_provider.lower() == "openai":
+            self.llm = ChatOpenAI(
+                model_name=self.config.model_name,
+                temperature=self.config.temperature,
+            )
+        elif self.config.model_provider.lower() == "anthropic":
+            from langchain_anthropic import ChatAnthropic
+
+            self.llm = ChatAnthropic(
+                model=self.config.model_name,
+                temperature=self.config.temperature,
+            )
+        else:
+            # For other providers, use ModelProvider factory
+            from docstra.model_provider import ModelProvider
+
+            self.llm = ModelProvider.create_model(
+                provider=self.config.model_provider,
+                model_name=self.config.model_name,
+                temperature=self.config.temperature,
+            )
 
         # Create enhanced retriever with access to database
         self.retriever = self.vectorstore.as_retriever(

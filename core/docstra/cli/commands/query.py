@@ -2,17 +2,12 @@
 
 import os
 import click
-import asyncio
 from pathlib import Path
 
 from rich.prompt import Confirm
-from rich.markdown import Markdown
-from rich.live import Live
 
-from docstra.service import DocstraService
 from docstra.config import DocstraConfig
 from docstra.cli.base import DocstraCommand
-from docstra.cli.utils import resolve_relative_path
 
 
 class QueryCommand(DocstraCommand):
@@ -51,6 +46,13 @@ class QueryCommand(DocstraCommand):
             if log_file:
                 config.log_file = log_file
 
+            # Check for required API keys before initializing service
+            if not self.ensure_api_keys(config.model_provider):
+                self.console.print(
+                    "[red]Failed to set required API keys. Aborting.[/red]"
+                )
+                return
+
             # Initialize service
             service = self.initialize_service(str(config_path))
 
@@ -62,7 +64,7 @@ class QueryCommand(DocstraCommand):
                 for file_path in file_paths:
                     # Normalize file path
                     path = Path(file_path)
-                    
+
                     # Handle absolute or relative paths
                     if path.is_absolute():
                         abs_file_path = path
@@ -70,11 +72,11 @@ class QueryCommand(DocstraCommand):
                     else:
                         abs_file_path = self.working_dir / path
                         rel_file_path = path
-                    
+
                     if not os.path.exists(abs_file_path):
                         self.display_error(f"File {rel_file_path} not found.")
                         continue
-                        
+
                     service.add_context(session_id, str(rel_file_path))
 
             # Process the message with streaming
@@ -102,9 +104,7 @@ class QueryCommand(DocstraCommand):
 @click.command("query")
 @click.argument("question", type=str)
 @click.option(
-    "--files", "-f", 
-    multiple=True, 
-    help="Optional file paths to include as context"
+    "--files", "-f", multiple=True, help="Optional file paths to include as context"
 )
 @click.option("--log-level", help="Log level (DEBUG, INFO, WARNING, ERROR, CRITICAL)")
 @click.option("--log-file", help="Path to log file")
@@ -117,7 +117,7 @@ def query(question, files, log_level, log_file, debug):
     """Query the codebase with a question.
 
     QUESTION is the question to ask about the codebase.
-    
+
     Examples:
       docstra query "Where is the config defined?"
       docstra query "How does the file loading work?" --files src/loader.py src/utils.py

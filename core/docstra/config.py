@@ -82,15 +82,68 @@ class DocstraConfig:
 
         # Default excluded patterns
         self.excluded_patterns = excluded_patterns or [
+            # Version control
             ".git/**",
+            # Package managers & dependencies
             "node_modules/**",
             "venv/**",
             ".venv/**",
+            "**/env/**",
+            "**/virtualenv/**",
+            "yarn.lock",
+            "package-lock.json",
+            "poetry.lock",
+            "Pipfile.lock",
+            # Build and distribution
             "build/**",
             "dist/**",
+            "**/bin/**",
+            "**/out/**",
+            "**/target/**",
+            # Cache files
             "__pycache__/**",
             "**/*.pyc",
+            ".cache/**",
+            ".pytest_cache/**",
+            ".ruff_cache/**",
+            ".mypy_cache/**",
+            "**/.ipynb_checkpoints/**",
+            "coverage/**",
+            ".coverage",
+            # System files
             "**/.DS_Store",
+            "**/Thumbs.db",
+            # IDE and editor files
+            "**/.idea/**",
+            "**/.vscode/**",
+            "**/.vs/**",
+            # Testing
+            "**/test/**",
+            "**/tests/**",
+            "**/*.test.*",
+            "**/*.spec.*",
+            # Environment and config files
+            ".env*",
+            "**/*.config.*",
+            "**/*.min.*",  # Minified files
+            # R-specific
+            ".Rproj.user/**",
+            ".Rhistory",
+            ".RData",
+            "**/*.Rproj",
+            # Logs
+            "**/logs/**",
+            "**/*.log",
+            # Documentation (optional, may want to include)
+            # "docs/**",
+            # "**/README.md",
+            # Temp files
+            "**/tmp/**",
+            "**/temp/**",
+            # Special directories
+            "**/fixtures/**",
+            "**/vendor/**",
+            "**/third_party/**",
         ]
 
         # Default supported file extensions
@@ -124,13 +177,13 @@ class DocstraConfig:
     @classmethod
     def _load_env_file(cls, working_dir: Union[str, Path]) -> None:
         """Load environment variables from .docstra/.env file.
-        
+
         Args:
             working_dir: Working directory containing the .docstra folder
         """
         working_dir = Path(working_dir) if working_dir else Path.cwd()
         env_file = working_dir / ".docstra" / ".env"
-        
+
         if env_file.exists():
             load_dotenv(env_file)
             logging.debug(f"Loaded environment variables from {env_file}")
@@ -154,7 +207,7 @@ class DocstraConfig:
             A DocstraConfig instance with merged configuration
         """
         working_dir = Path(working_dir) if working_dir else Path.cwd()
-        
+
         # First load environment variables from .env file
         cls._load_env_file(working_dir)
 

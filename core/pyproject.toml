@@ -30,6 +30,7 @@ redis = "^5.2.1"
 langchain-anthropic = "^0.3.8"
 watchdog = "^6.0.0"
 python-dotenv = "^1.0.1"
+pathspec = "^0.12.1"
 
 [tool.poetry.scripts]
 docstra = "docstra.cli:cli"
