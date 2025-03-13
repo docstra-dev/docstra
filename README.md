@@ -6,21 +6,28 @@ This project is a component of a master’s thesis at the **University of Oslo**
 
 ## Key Features
 
-- **Automated Documentation**: Scans and indexes code repositories to generate rich documentation with logical links between files, functions, classes, and modules.
 - **Multi-Platform Accessibility**: Available as a local CLI and a FastAPI server, allowing integration into other applications.
-- **VSCode and IntelliJ Plugin Support**: In development to enable seamless access within popular IDEs.
-- **Electron-based GUI Companion App**: A cross-platform desktop application to view and interact with generated documentation.
 - **LLM-Powered Chatbot**: Provides an interactive way to query the codebase and explore documentation.
+- **VSCode and IntelliJ Plugin Support**: In development to enable seamless access within popular IDEs.
+- **Automated Documentation**: Scans and indexes code repositories to generate rich documentation with logical links between files, functions, classes, and modules.
 
 ## Getting Started
 
 ### Prerequisites
 
-- **Python 3.8+**
-- **Poetry** for dependency management. [Install Poetry](https://python-poetry.org/docs/#installation)
-- **OpenAI API Key** for access to LLM features (set up as an environment variable)
+- **Python 3.12+**
+- **pip** package manager for direct installation.
+
+- **Poetry** for dependency management when using the `docstra` repo locally. [Install Poetry](https://python-poetry.org/docs/#installation)
+- **LLM Provider API Key** for access to LLM features (set up as an environment variable or in the configuration wizard)
 
 ### Installation
+
+Direct installation of the package:
+
+```bash
+pip install docstra
+```
 
 Clone this repository and install dependencies via Poetry.
 
@@ -28,11 +35,14 @@ Clone this repository and install dependencies via Poetry.
 git clone https://github.uio.no/docstra/docstra.git
 cd docstra
 poetry install
+docstra init OR poetry run docstra init
 ```
 
 ### Environment Variables and Project Files
 
-Docstra is designed to integrate smoothly into your existing project environment. When run from within an active repository, Docstra creates a dedicated `.docstra` folder in the root directory to store all generated embeddings and essential project files, keeping your documentation assets organized and easily accessible. This `.docstra` folder also houses a `.env` file for environment variables, including the required OpenAI API key. If the user has not yet added an API key, Docstra will prompt for one when the tool is run; the key can also be provided as a command-line argument. Once entered, the key is securely stored in `.docstra/.env`, allowing for streamlined future usage without additional prompts.
+Docstra is designed to integrate smoothly into your existing project environment. When run from within an active repository, Docstra creates a dedicated `.docstra` folder in the root directory to store all generated embeddings and essential project files, keeping your documentation assets organized and easily accessible. This `.docstra` folder also houses a `.env` file for environment variables, including the required LLM provider API key. If the user has not yet added an API key, Docstra will prompt for one when the tool is run; the key can also be provided as a command-line argument. Once entered, the key is securely stored in `.docstra/.env`, allowing for streamlined future usage without additional prompts.
+
+**Important:** Remember to add the `.docstra` directory to your project's `.gitignore` file. There will also be a simple CLI command available to do this for you during the `docstra init` wizard.
 
 ### Running Docstra
 
@@ -43,14 +53,16 @@ Docstra offers both CLI and FastAPI server options.
 Run Docstra directly from the command line:
 
 ```bash
+docstra --help
+OR
 poetry run docstra --help
 ```
 
-Example of generating documentation:
-
-```bash
-poetry run docstra generate-docs path/to/your/codebase
-```
+Available commands:
+- `docstra init`: Interactive configuration wizard
+- `docstra ingest`: Indexing and embedding of your code files
+- `docstra query`: Single questions about the codebase or specific files
+- `docstra chat`: Interactive chat session with the LLM, including limited chat history
 
 #### FastAPI Server
 
@@ -73,6 +85,8 @@ The CLI offers a `query` command, allowing for specific questions about the code
 ```bash
 poetry run docstra query "How does authentication work?"
 ```
+
+This can also be 
 
 With the FastAPI server, you can send `POST` requests to `/query` with your question in the payload for direct querying from other applications.
 
