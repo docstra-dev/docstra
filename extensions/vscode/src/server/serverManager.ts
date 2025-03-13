@@ -5,7 +5,12 @@ import * as cp from "child_process";
 import * as fs from "fs";
 import axios from "axios";
 import { getWorkspaceFolder } from "../utils/workspaceUtils";
-import { checkDocstraInstalled, installDocstra } from "../utils/installUtils";
+import {
+  checkDocstraInstalled,
+  installDocstra,
+  getDocstraPath,
+  getVenvPythonPath,
+} from "../utils/installUtils";
 
 export class ServerManager {
   // Configuration
@@ -13,8 +18,10 @@ export class ServerManager {
   private readonly DOCSTRA_CONFIG_FOLDER = ".docstra";
   private statusBar: vscode.StatusBarItem | null = null;
   private serverProcess: cp.ChildProcess | null = null;
+  private context: vscode.ExtensionContext;
 
-  constructor() {
+  constructor(context: vscode.ExtensionContext) {
+    this.context = context;
     this.statusBar = vscode.window.createStatusBarItem(
       vscode.StatusBarAlignment.Left
     );
@@ -70,12 +77,12 @@ export class ServerManager {
         }
       }
 
-      // Step 4: Check if Docstra is installed
-      const isInstalled = await checkDocstraInstalled();
+      // Step 4: Check if Docstra is installed in the virtual environment
+      const isInstalled = await checkDocstraInstalled(this.context);
       if (!isInstalled) {
         const shouldInstall = await this.promptForInstallation();
         if (shouldInstall) {
-          await installDocstra();
+          await installDocstra(this.context);
         } else {
           return false;
         }
@@ -226,8 +233,9 @@ export class ServerManager {
   private async initializeDocstra(workspaceFolder: string): Promise<void> {
     this.updateStatusBar("initializing");
 
+    const docstraPath = getDocstraPath(this.context);
     return new Promise<void>((resolve, reject) => {
-      const process = cp.spawn("docstra", ["init"], { cwd: workspaceFolder });
+      const process = cp.spawn(docstraPath, ["init"], { cwd: workspaceFolder });
 
       process.on("close", (code) => {
         if (code === 0) {
@@ -249,6 +257,151 @@ export class ServerManager {
   }
 
   /**
+   * Start the Docstra server
+   */
+  private async startDocstraServer(workspaceFolder: string): Promise<void> {
+    this.updateStatusBar("starting");
+
+    const docstraPath = getDocstraPath(this.context);
+    console.log("Starting Docstra server with path:", docstraPath);
+    console.log("Workspace folder:", workspaceFolder);
+
+    // Check if the executable exists
+    if (!fs.existsSync(docstraPath)) {
+      throw new Error(`Docstra executable not found at ${docstraPath}`);
+    }
+
+    // Get the virtual environment's Python path
+    const venvPythonPath = getVenvPythonPath(this.context);
+    console.log("Using Python from virtual environment:", venvPythonPath);
+
+    // Start the server with the virtual environment's Python
+    this.serverProcess = cp.spawn(venvPythonPath, ["-m", "docstra", "serve"], {
+      cwd: workspaceFolder,
+      env: {
+        ...process.env,
+        PYTHONPATH: path.dirname(venvPythonPath),
+      },
+    });
+
+    // Collect server output for error reporting
+    let serverOutput = "";
+    let serverError = "";
+
+    // Log server output
+    this.serverProcess.stdout?.on("data", (data) => {
+      const output = data.toString();
+      console.log("Docstra server stdout:", output);
+      serverOutput += output;
+    });
+
+    this.serverProcess.stderr?.on("data", (data) => {
+      const error = data.toString();
+      console.error("Docstra server stderr:", error);
+      serverError += error;
+    });
+
+    // Handle server process events
+    this.serverProcess.on("error", (err) => {
+      console.error("Failed to start Docstra server:", err);
+      this.updateStatusBar("error");
+      vscode.window.showErrorMessage(
+        `Failed to start Docstra server: ${err.message}`
+      );
+    });
+
+    this.serverProcess.on("close", (code) => {
+      console.log(`Docstra server exited with code ${code}`);
+      this.updateStatusBar("disconnected");
+      this.serverProcess = null;
+    });
+
+    // Wait for server to start
+    await new Promise<void>((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        if (this.serverProcess) {
+          this.serverProcess.kill();
+        }
+        // Include server output in the error message
+        const errorMessage =
+          serverError || serverOutput || "No server output available";
+        reject(
+          new Error(
+            `Server failed to start within 10 seconds. Error: ${errorMessage}`
+          )
+        );
+      }, 10000);
+
+      const checkServer = async () => {
+        try {
+          const response = await axios.get(this.getHealthEndpoint(), {
+            timeout: 1000,
+            validateStatus: (status) => status === 200, // Only accept 200 as success
+          });
+          console.log("Server health check response:", response.data);
+          clearTimeout(timeout);
+          this.updateStatusBar("connected");
+          resolve();
+        } catch (error) {
+          console.log("Server not ready yet, retrying...");
+          setTimeout(checkServer, 1000);
+        }
+      };
+
+      checkServer();
+    });
+  }
+
+  /**
+   * Update the status bar with the current state
+   */
+  private updateStatusBar(
+    state:
+      | "idle"
+      | "starting"
+      | "connected"
+      | "disconnected"
+      | "error"
+      | "stopping"
+      | "initializing"
+  ): void {
+    if (!this.statusBar) {
+      return;
+    }
+
+    switch (state) {
+      case "idle":
+        this.statusBar.text = "Docstra: Idle";
+        this.statusBar.tooltip = "Click to start chat";
+        break;
+      case "starting":
+        this.statusBar.text = "Docstra: Starting...";
+        this.statusBar.tooltip = "Starting Docstra server";
+        break;
+      case "connected":
+        this.statusBar.text = "Docstra: Connected";
+        this.statusBar.tooltip = "Click to start chat";
+        break;
+      case "disconnected":
+        this.statusBar.text = "Docstra: Disconnected";
+        this.statusBar.tooltip = "Click to start chat";
+        break;
+      case "error":
+        this.statusBar.text = "Docstra: Error";
+        this.statusBar.tooltip = "Click to start chat";
+        break;
+      case "stopping":
+        this.statusBar.text = "Docstra: Stopping...";
+        this.statusBar.tooltip = "Stopping Docstra server";
+        break;
+      case "initializing":
+        this.statusBar.text = "Docstra: Initializing...";
+        this.statusBar.tooltip = "Initializing Docstra configuration";
+        break;
+    }
+  }
+
+  /**
    * Prompt the user about installing Docstra
    */
   private async promptForInstallation(): Promise<boolean> {
@@ -258,92 +411,5 @@ export class ServerManager {
       "No"
     );
     return response === "Yes";
-  }
-
-  /**
-   * Start the Docstra server in the specified workspace
-   */
-  private async startDocstraServer(workspaceFolder: string): Promise<void> {
-    this.updateStatusBar("starting");
-
-    try {
-      // Use detached process to keep server running even if extension reloads
-      this.serverProcess = cp.spawn("docstra", ["serve"], {
-        cwd: workspaceFolder,
-        detached: true,
-        shell: process.platform === "win32", // Use shell on Windows
-        stdio: "ignore", // Prevent stdio hanging
-      });
-
-      // Unref to allow Node.js to exit while child process continues
-      this.serverProcess.unref();
-
-      // Wait for server to be available
-      let attempts = 0;
-      while (attempts < 10) {
-        await new Promise((resolve) => setTimeout(resolve, 1000));
-        const isRunning = await this.checkServerRunning(workspaceFolder);
-        if (isRunning) {
-          this.updateStatusBar("connected");
-          return;
-        }
-        attempts++;
-      }
-
-      this.updateStatusBar("error");
-      throw new Error("Timed out waiting for Docstra server to start");
-    } catch (error) {
-      this.updateStatusBar("error");
-      throw error;
-    }
-  }
-
-  /**
-   * Update the status bar to reflect the current state
-   */
-  private updateStatusBar(
-    status:
-      | "connected"
-      | "disconnected"
-      | "starting"
-      | "stopping"
-      | "initializing"
-      | "error"
-  ) {
-    if (!this.statusBar) {
-      return;
-    }
-
-    switch (status) {
-      case "connected":
-        this.statusBar.text = "$(check) Docstra running";
-        this.statusBar.tooltip = "Docstra server is running";
-        this.statusBar.command = "docstra.startChat";
-        break;
-      case "disconnected":
-        this.statusBar.text = "$(circle-slash) Docstra idle";
-        this.statusBar.tooltip = "Docstra server is not running";
-        this.statusBar.command = "docstra.startChat";
-        break;
-      case "starting":
-        this.statusBar.text = "$(sync~spin) Starting Docstra...";
-        this.statusBar.tooltip = "Starting Docstra server";
-        break;
-      case "stopping":
-        this.statusBar.text = "$(sync~spin) Stopping Docstra...";
-        this.statusBar.tooltip = "Stopping Docstra server";
-        break;
-      case "initializing":
-        this.statusBar.text = "$(sync~spin) Initializing Docstra...";
-        this.statusBar.tooltip = "Initializing Docstra configuration";
-        break;
-      case "error":
-        this.statusBar.text = "$(error) Docstra error";
-        this.statusBar.tooltip = "Error with Docstra server";
-        this.statusBar.command = "docstra.startChat";
-        break;
-    }
-
-    this.statusBar.show();
   }
 }

@@ -10,7 +10,7 @@ export function activate(context: vscode.ExtensionContext) {
   console.log("Docstra extension is now active");
 
   // Initialize managers
-  const serverManager = new ServerManager();
+  const serverManager = new ServerManager(context);
   const chatManager = new ChatManager(context, serverManager);
 
   // Register commands

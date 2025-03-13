@@ -1,0 +1,57 @@
+[tool.poetry]
+name = "docstra"
+version = "0.1.12"
+description = "An LLM-powered CLI tool and Python package for generating repository-level documentation from code."
+authors = ["Jørgen Andresen Osberg <jorgen.osberg@gmail.com>, Jonathan Selstad Hofstein <>"]
+readme = "README.md"
+exclude = ["extensions"]
+
+[tool.poetry.dependencies]
+python = "^3.12"
+langchain = "^0.3.3"
+openai = "^1.51.2"
+langchain-openai = "^0.2.2"
+chromadb = "^0.5.12"
+langchain-chroma = "^0.1.4"
+langchain-community = "^0.3.2"
+uvicorn = "^0.32.0"
+fastapi = "^0.115.4"
+tree-sitter-python = "^0.23.4"
+tree-sitter = "^0.23.2"
+tree-sitter-typescript = "^0.23.2"
+tree-sitter-json = "^0.24.8"
+tree-sitter-markdown = "^0.3.2"
+tree-sitter-javascript = "^0.23.1"
+tree-sitter-html = "^0.23.2"
+langchain-text-splitters = "^0.3.2"
+websockets = "^14.2"
+rich = "^13.9.4"
+click = "^8.1.8"
+redis = "^5.2.1"
+langchain-anthropic = "^0.3.8"
+watchdog = "^6.0.0"
+python-dotenv = "^1.0.1"
+pathspec = "^0.12.1"
+requests = "^2.31.0"
+packaging = "^24.0"
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^8.0.0"
+pytest-cov = "^4.1.0"
+flake8 = "^7.1.2"
+mypy = "^1.15.0"
+pylint = "^3.3.5"
+
+[tool.poetry.scripts]
+docstra = "docstra.cli.main:main"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = "-v --cov=docstra --cov-report=term-missing"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
