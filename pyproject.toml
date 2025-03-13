@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "docstra"
-version = "0.1.12"
+version = "0.1.14"
 description = "An LLM-powered CLI tool and Python package for generating repository-level documentation from code."
 authors = ["Jørgen Andresen Osberg <jorgen.osberg@gmail.com>, Jonathan Selstad Hofstein <>"]
 readme = "README.md"

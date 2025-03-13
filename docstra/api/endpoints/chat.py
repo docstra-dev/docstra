@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
-from docstra.service import DocstraService
+from docstra.core.service import DocstraService
 from docstra.api.dependencies import get_service, handle_exceptions
 
 

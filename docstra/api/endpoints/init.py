@@ -9,7 +9,7 @@ from pydantic import BaseModel
 
 from docstra.core.config import DocstraConfig
 from docstra.core.errors import ConfigError
-from docstra.service import DocstraService
+from docstra.core.service import DocstraService
 
 
 class InitRequest(BaseModel):
@@ -68,12 +68,12 @@ async def initialize_docstra(request: InitRequest) -> InitResponse:
             ],
             "anthropic": [
                 "claude-3-opus-20240229",
-                "claude-3-sonnet-20240229", 
+                "claude-3-sonnet-20240229",
                 "claude-3-haiku-20240307",
                 "claude-2.1",
                 "claude-2.0",
                 "claude-instant-1.2",
-            ]
+            ],
         }
 
         # Update configuration with request values
@@ -87,11 +87,16 @@ async def initialize_docstra(request: InitRequest) -> InitResponse:
                 config.openai_api_key = request.api_key
             elif config.model_provider == "anthropic":
                 os.environ["ANTHROPIC_API_KEY"] = request.api_key
-                
+
         if request.model_name:
             provider = config.model_provider
-            if provider in valid_models and request.model_name not in valid_models[provider]:
-                raise ConfigError(f"Invalid model name for {provider}: {request.model_name}")
+            if (
+                provider in valid_models
+                and request.model_name not in valid_models[provider]
+            ):
+                raise ConfigError(
+                    f"Invalid model name for {provider}: {request.model_name}"
+                )
             config.model_name = request.model_name
 
         # Save configuration
