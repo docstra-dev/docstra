@@ -30,6 +30,56 @@ class FileNode:
         self.symbols: List[str] = []
         self.imports: List[str] = []
 
+        # Enhanced metadata
+        self.line_count: Optional[int] = None
+        self.complexity: Optional[int] = None
+        self.dependencies: List[str] = []
+        self.dependents: List[str] = []
+        self.category: Optional[str] = None
+        self.last_modified: Optional[float] = None
+        self.contributors: List[str] = []
+        self.tags: List[str] = []
+
+        # Analysis results
+        self.analysis = {
+            "complexity_metrics": {},
+            "code_quality": {},
+            "documentation_coverage": None,
+            "test_coverage": None,
+        }
+
+    def analyze(self, index: Optional[CodebaseIndex] = None) -> None:
+        """Analyze the file for additional metadata.
+
+        Args:
+            index: Optional codebase index for enhanced analysis
+        """
+        if not index:
+            return
+
+        # Get enhanced metadata from index
+        metadata = index.get_file_metadata(self.path)
+        if metadata:
+            # Update basic metadata
+            self.line_count = metadata.get("line_count")
+            self.complexity = metadata.get("complexity")
+            self.dependencies = metadata.get("dependencies", [])
+            self.dependents = metadata.get("dependents", [])
+            self.category = metadata.get("category")
+            self.last_modified = metadata.get("last_modified")
+            self.contributors = metadata.get("contributors", [])
+            self.tags = metadata.get("tags", [])
+
+            # Update analysis results
+            self.analysis.update(
+                {
+                    "complexity_metrics": metadata.get("complexity_metrics", {}),
+                    "code_quality": metadata.get("code_quality", {}),
+                    "documentation_coverage": metadata.get("documentation_coverage"),
+                    "test_coverage": metadata.get("test_coverage"),
+                }
+            )
+
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary representation.
 
@@ -44,6 +94,15 @@ class FileNode:
             "size": self.size,
             "symbols": self.symbols,
             "imports": self.imports,
+            "line_count": self.line_count,
+            "complexity": self.complexity,
+            "dependencies": self.dependencies,
+            "dependents": self.dependents,
+            "category": self.category,
+            "last_modified": self.last_modified,
+            "contributors": self.contributors,
+            "tags": self.tags,
+            "analysis": self.analysis,
         }
 
 
@@ -148,22 +207,118 @@ class RepositoryMap:
             ".pytest_cache",
         ]
 
-    def should_exclude(self, path: str) -> bool:
-        """Check if a path should be excluded from the map.
+        # Enhanced metadata
+        self.module_categories = {
+            "core": ["core", "src", "lib", "main"],
+            "api": ["api", "rest", "graphql", "endpoints"],
+            "models": ["models", "schemas", "entities"],
+            "services": ["services", "providers", "managers"],
+            "utils": ["utils", "helpers", "common"],
+            "tests": ["tests", "specs", "fixtures"],
+            "config": ["config", "settings", "conf"],
+            "docs": ["docs", "documentation"],
+        }
+
+        # Codebase statistics
+        self.stats = {
+            "total_files": 0,
+            "total_lines": 0,
+            "languages": {},
+            "module_sizes": {},
+            "dependencies": {},
+            "complexity": {},
+        }
+
+    def _categorize_module(self, path: str) -> str:
+        """Categorize a module based on its path and contents.
 
         Args:
-            path: Path to check
+            path: Path to the module
 
         Returns:
-            True if the path should be excluded, False otherwise
+            Category name
         """
-        path_norm = os.path.normpath(path)
+        path_lower = path.lower()
 
-        for pattern in self.exclude_patterns:
-            if pattern in path_norm:
-                return True
+        # Check path against known categories
+        for category, patterns in self.module_categories.items():
+            if any(pattern in path_lower for pattern in patterns):
+                return category
 
-        return False
+        # Check file contents for categorization
+        if self.index:
+            metadata = self.index.get_file_metadata(path)
+            if metadata:
+                # Check for test files
+                if any(
+                    test in path_lower for test in ["test_", "_test", "spec_", "_spec"]
+                ):
+                    return "tests"
+                # Check for configuration files
+                if any(
+                    conf in path_lower
+                    for conf in [".conf", ".config", ".yaml", ".yml", ".json"]
+                ):
+                    return "config"
+                # Check for documentation
+                if path_lower.endswith((".md", ".rst", ".txt")):
+                    return "docs"
+
+        return "other"
+
+    def _analyze_dependencies(self) -> None:
+        """Analyze dependencies between modules and files."""
+        if not self.index:
+            return
+
+        def analyze_node(node: Union[FileNode, DirectoryNode]) -> None:
+            if isinstance(node, FileNode):
+                # Track file dependencies
+                deps = self.get_file_dependencies(node.path)
+                if deps:
+                    self.stats["dependencies"][node.path] = deps
+
+                    # Calculate complexity based on dependencies and symbols
+                    complexity = len(deps) + len(node.symbols)
+                    self.stats["complexity"][node.path] = complexity
+
+            elif isinstance(node, DirectoryNode):
+                # Recursively analyze child nodes
+                for child in node.children.values():
+                    analyze_node(child)
+
+        analyze_node(self.root)
+
+    def _calculate_statistics(self) -> None:
+        """Calculate codebase statistics."""
+
+        def analyze_node(node: Union[FileNode, DirectoryNode]) -> None:
+            if isinstance(node, FileNode):
+                # Update file statistics
+                self.stats["total_files"] += 1
+
+                # Track language statistics
+                if node.language:
+                    self.stats["languages"][node.language] = (
+                        self.stats["languages"].get(node.language, 0) + 1
+                    )
+
+                # Track module sizes
+                module_category = self._categorize_module(node.path)
+                self.stats["module_sizes"][module_category] = (
+                    self.stats["module_sizes"].get(module_category, 0) + 1
+                )
+
+                # Count lines if available
+                if hasattr(node, "line_count"):
+                    self.stats["total_lines"] += node.line_count
+
+            elif isinstance(node, DirectoryNode):
+                # Recursively analyze child nodes
+                for child in node.children.values():
+                    analyze_node(child)
+
+        analyze_node(self.root)
 
     def build(self) -> None:
         """Build the repository map by traversing the filesystem."""
@@ -172,6 +327,10 @@ class RepositoryMap:
         # Enhance with metadata from the index if available
         if self.index:
             self._enhance_with_index()
+
+        # Calculate statistics and analyze dependencies
+        self._calculate_statistics()
+        self._analyze_dependencies()
 
     def _traverse_directory(self, dir_path: str, node: DirectoryNode) -> None:
         """Recursively traverse a directory and build the map.
@@ -258,14 +417,30 @@ class RepositoryMap:
         def _enhance_node(node: Union[FileNode, DirectoryNode]) -> None:
             """Recursively enhance nodes with index metadata."""
             if isinstance(node, FileNode):
-                # Enhance file nodes
-                metadata = self.index.get_file_metadata(node.path)
-                if metadata:
-                    node.language = metadata.get("language", node.language)
-                    node.symbols = metadata.get("classes", []) + metadata.get(
-                        "functions", []
+                # Analyze file node
+                node.analyze(self.index)
+
+                # Update repository statistics
+                if node.line_count:
+                    self.stats["total_lines"] += node.line_count
+
+                if node.language:
+                    self.stats["languages"][node.language] = (
+                        self.stats["languages"].get(node.language, 0) + 1
                     )
-                    node.imports = metadata.get("imports", [])
+
+                if node.category:
+                    self.stats["module_sizes"][node.category] = (
+                        self.stats["module_sizes"].get(node.category, 0) + 1
+                    )
+
+                # Update complexity metrics
+                if node.complexity:
+                    self.stats["complexity"][node.path] = node.complexity
+
+                # Update dependency information
+                if node.dependencies:
+                    self.stats["dependencies"][node.path] = node.dependencies
 
             elif isinstance(node, DirectoryNode):
                 # Recursively enhance child nodes
@@ -388,13 +563,72 @@ class RepositoryMap:
 
         return self.index.get_related_files(file_path)
 
+    def get_module_overview(self) -> Dict[str, Any]:
+        """Get a comprehensive overview of the codebase modules.
+
+        Returns:
+            Dictionary containing module overview information
+        """
+        overview = {
+            "statistics": self.stats,
+            "modules": {},
+            "dependencies": {},
+            "complexity": {},
+        }
+
+        def analyze_node(node: Union[FileNode, DirectoryNode], path: str = "") -> None:
+            if isinstance(node, FileNode):
+                # Add file information
+                module_category = self._categorize_module(node.path)
+                if module_category not in overview["modules"]:
+                    overview["modules"][module_category] = []
+
+                file_info = {
+                    "path": node.path,
+                    "language": node.language,
+                    "symbols": node.symbols,
+                    "imports": node.imports,
+                }
+                overview["modules"][module_category].append(file_info)
+
+                # Add dependency information
+                if node.path in self.stats["dependencies"]:
+                    overview["dependencies"][node.path] = self.stats["dependencies"][
+                        node.path
+                    ]
+
+                # Add complexity information
+                if node.path in self.stats["complexity"]:
+                    overview["complexity"][node.path] = self.stats["complexity"][
+                        node.path
+                    ]
+
+            elif isinstance(node, DirectoryNode):
+                # Recursively analyze child nodes
+                for name, child in node.children.items():
+                    child_path = os.path.join(path, name)
+                    analyze_node(child, child_path)
+
+        analyze_node(self.root)
+        return overview
+
     def to_dict(self) -> Dict[str, Any]:
         """Convert the repository map to a dictionary.
 
         Returns:
             Dictionary representation of the map
         """
-        return self.root.to_dict()
+        base_dict = self.root.to_dict()
+
+        # Add enhanced metadata
+        base_dict.update(
+            {
+                "statistics": self.stats,
+                "module_overview": self.get_module_overview(),
+            }
+        )
+
+        return base_dict
 
     @staticmethod
     def from_documents(

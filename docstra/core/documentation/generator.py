@@ -8,6 +8,7 @@ import subprocess
 from pathlib import Path
 from typing import Dict, List, Any, Optional, Set, Union, Tuple
 import yaml
+import datetime
 
 from docstra.core.document_processing.document import Document, DocumentType
 from docstra.core.indexing.repo_map import RepositoryMap, FileNode, DirectoryNode
@@ -51,75 +52,270 @@ class DocumentationGenerator:
         self.assets_dir = self.docs_dir / "assets"
         self.css_dir = self.assets_dir / "css"
         self.js_dir = self.assets_dir / "js"
+        self.config_dir = self.docs_dir / ".docstra"
 
         # Create necessary directories
         os.makedirs(self.docs_dir, exist_ok=True)
         os.makedirs(self.assets_dir, exist_ok=True)
         os.makedirs(self.css_dir, exist_ok=True)
         os.makedirs(self.js_dir, exist_ok=True)
+        os.makedirs(self.config_dir, exist_ok=True)
+
+        # Load existing configuration if available
+        self._load_configuration()
+
+    def _load_configuration(self) -> None:
+        """Load existing configuration and state."""
+        config_file = self.config_dir / "config.json"
+        if config_file.exists():
+            try:
+                with open(config_file, "r") as f:
+                    config = json.load(f)
+                    self.processed_files = set(config.get("processed_files", []))
+                    self.nav_items = config.get("nav_items", [])
+                    self.modules = config.get("modules", {})
+                    self.global_symbols = config.get("global_symbols", {})
+            except Exception as e:
+                print(f"Warning: Could not load configuration: {e}")
+
+    def _save_configuration(self) -> None:
+        """Save current configuration and state."""
+        config = {
+            "processed_files": list(self.processed_files),
+            "nav_items": self.nav_items,
+            "modules": self.modules,
+            "global_symbols": self.global_symbols,
+            "last_updated": datetime.datetime.now().isoformat(),
+        }
+
+        config_file = self.config_dir / "config.json"
+        try:
+            with open(config_file, "w") as f:
+                json.dump(config, f, indent=2)
+        except Exception as e:
+            print(f"Warning: Could not save configuration: {e}")
+
+    def _build_comprehensive_context(self, document: Document) -> Dict[str, Any]:
+        """Build comprehensive context for documentation generation.
+
+        Args:
+            document: Document to generate context for
+
+        Returns:
+            Dictionary containing comprehensive context
+        """
+        context = {
+            "file_info": {
+                "path": document.metadata.filepath,
+                "language": document.metadata.language,
+                "size": document.metadata.size_bytes,
+                "symbols": document.metadata.classes + document.metadata.functions,
+                "imports": document.metadata.imports,
+            },
+            "module_info": {},
+            "dependencies": [],
+            "related_files": [],
+            "code_quality": {},
+            "documentation_stats": {},
+        }
+
+        if self.repo_map:
+            file_node = self.repo_map.find_file(document.metadata.filepath)
+            if file_node:
+                # Get module category and related files
+                module_category = self.repo_map._categorize_module(
+                    document.metadata.filepath
+                )
+                related_files = self.repo_map.get_related_files(
+                    document.metadata.filepath
+                )
+                dependencies = self.repo_map.get_file_dependencies(
+                    document.metadata.filepath
+                )
+
+                # Update module information
+                context["module_info"] = {
+                    "category": module_category,
+                    "complexity": file_node.complexity,
+                    "line_count": file_node.line_count,
+                    "contributors": file_node.contributors,
+                    "last_modified": file_node.last_modified,
+                    "tags": file_node.tags,
+                }
+
+                # Update dependencies and related files
+                context["dependencies"] = dependencies
+                context["related_files"] = related_files
+
+                # Update code quality metrics
+                context["code_quality"] = file_node.analysis["code_quality"]
+                context["documentation_stats"] = {
+                    "coverage": file_node.analysis["documentation_coverage"],
+                    "test_coverage": file_node.analysis["test_coverage"],
+                }
+
+                # Get module overview if available
+                module_overview = self.repo_map.get_module_overview()
+                if module_overview:
+                    context["module_overview"] = {
+                        "statistics": module_overview["statistics"],
+                        "modules": module_overview["modules"].get(module_category, []),
+                        "dependencies": module_overview["dependencies"].get(
+                            document.metadata.filepath, []
+                        ),
+                        "complexity": module_overview["complexity"].get(
+                            document.metadata.filepath, None
+                        ),
+                    }
+
+        return context
 
     def generate_for_document(
         self, document: Document, project_context: str = ""
-    ) -> None:
-        """Generate documentation for a single document.
+    ) -> Optional[str]:
+        """Generate documentation for a document.
 
         Args:
             document: Document to generate documentation for
-            project_context: Optional context about the project
-        """
-        # Skip if already processed or matches exclude patterns
-        if document.metadata.filepath in self.processed_files:
-            return
+            project_context: Additional context about the project
 
+        Returns:
+            Generated documentation if successful, None otherwise
+        """
+        # Check if document should be excluded
         if any(
             pattern in document.metadata.filepath for pattern in self.exclude_patterns
         ):
-            return
+            return None
 
-        self.processed_files.add(document.metadata.filepath)
-        self.documents_by_path[document.metadata.filepath] = document
+        # Check if document has already been processed
+        if document.metadata.filepath in self.processed_files:
+            return None
 
-        # Determine relative path for documentation file
+        # Build comprehensive context
+        context = self._build_comprehensive_context(document)
+
+        # Build documentation prompt
+        prompt = self._build_documentation_prompt(document, context)
+
+        # Generate documentation using LLM
+        try:
+            documentation = self.llm_client.generate_documentation(prompt)
+            if documentation:
+                # Save documentation
+                self._save_documentation(document, documentation, context)
+                self.processed_files.add(document.metadata.filepath)
+                return documentation
+        except Exception as e:
+            print(
+                f"Error generating documentation for {document.metadata.filepath}: {str(e)}"
+            )
+
+        return None
+
+    def _save_documentation(
+        self, document: Document, documentation: str, context: Dict[str, Any]
+    ) -> None:
+        """Save generated documentation.
+
+        Args:
+            document: Original document
+            documentation: Generated documentation
+            context: Comprehensive context used for generation
+        """
+        # Create output path
+        rel_path = os.path.relpath(
+            document.metadata.filepath, self.repo_map.root_path if self.repo_map else ""
+        )
+        output_path = self.docs_dir / f"{rel_path}.md"
+
+        # Create directory if it doesn't exist
+        os.makedirs(output_path.parent, exist_ok=True)
+
+        # Build front matter
+        front_matter = {
+            "title": os.path.basename(document.metadata.filepath),
+            "description": f"Documentation for {document.metadata.filepath}",
+            "language": document.metadata.language,
+        }
+
+        # Add enhanced metadata from context
+        if context["module_info"]:
+            front_matter.update(context["module_info"])
+
+        # Add code quality metrics
+        if context["code_quality"]:
+            front_matter["code_quality"] = context["code_quality"]
+
+        # Add documentation statistics
+        if context["documentation_stats"]:
+            front_matter["documentation_stats"] = context["documentation_stats"]
+
+        # Write documentation with front matter
+        with open(output_path, "w") as f:
+            f.write("---\n")
+            for key, value in front_matter.items():
+                f.write(f"{key}: {value}\n")
+            f.write("---\n\n")
+            f.write(documentation)
+
+        # Update navigation
+        self._update_navigation(document, output_path, context)
+
+    def _needs_update(self, document: Document) -> bool:
+        """Check if a document needs to be updated.
+
+        Args:
+            document: Document to check
+
+        Returns:
+            True if the document needs updating, False otherwise
+        """
+        # Always update if not previously processed
+        if document.metadata.filepath not in self.processed_files:
+            return True
+
+        # Check if the source file has been modified
+        source_path = Path(document.metadata.filepath)
+        if not source_path.exists():
+            return False
+
+        # Get the corresponding documentation file
         rel_path = self._get_relative_doc_path(document.metadata.filepath)
+        doc_path = self._get_output_path(rel_path)
 
-        # Extract information about the document
-        language = str(document.metadata.language).lower()
-        file_basename = os.path.basename(document.metadata.filepath)
-        module_name = os.path.splitext(file_basename)[0]
+        if not doc_path.exists():
+            return True
 
-        # Determine the location and context
-        file_location = os.path.dirname(document.metadata.filepath)
-        file_context = (
-            f"File path: {document.metadata.filepath}\nLanguage: {language}\n"
-        )
+        # Compare modification times
+        source_mtime = source_path.stat().st_mtime
+        doc_mtime = doc_path.stat().st_mtime
 
-        if project_context:
-            file_context += f"\nProject Context:\n{project_context}"
+        return source_mtime > doc_mtime
 
-        # Get related files from repo map if available
-        related_files = []
-        if self.repo_map:
-            related_paths = self.repo_map.get_related_files(document.metadata.filepath)
-            related_files = [os.path.basename(path) for path in related_paths]
-            file_context += f"\nRelated files: {', '.join(related_files)}"
+    def _update_navigation(
+        self, document: Document, output_path: Path, context: Dict[str, Any]
+    ) -> None:
+        """Update the navigation structure for a document.
 
-        # Build prompt with extracted context
-        doc_prompt = self._build_documentation_prompt(document, file_context)
-
-        # Generate documentation from LLM
-        doc_content = self.llm_client.document_code(
-            code=document.content, language=language, additional_context=doc_prompt
-        )
-
-        # Process and save the documentation
-        output_path = self._get_output_path(rel_path)
-        self._save_documentation(document, doc_content, output_path)
-
-        # Add to navigation structure
+        Args:
+            document: Document to update navigation for
+            output_path: Path to the documentation file
+            context: Comprehensive context used for generation
+        """
+        # Create navigation item
         nav_item = {
-            "title": module_name,
+            "title": os.path.basename(document.metadata.filepath),
             "path": str(output_path.relative_to(self.docs_dir)),
         }
+
+        # Check if item already exists
+        for item in self.nav_items:
+            if item.get("path") == nav_item["path"]:
+                item.update(nav_item)
+                return
+
+        # Add new item
         self.nav_items.append(nav_item)
 
     def _build_documentation_prompt(self, document: Document, file_context: str) -> str:
@@ -132,53 +328,199 @@ class DocumentationGenerator:
         Returns:
             Prompt for the LLM
         """
-        prompt = f"""
-Please generate comprehensive markdown documentation for this code file.
+        # Get enhanced metadata from repository map
+        file_node = None
+        module_context = {}
+        if self.repo_map:
+            file_node = self.repo_map.find_file(document.metadata.filepath)
+            if file_node:
+                # Get module category and related files
+                module_category = self.repo_map._categorize_module(
+                    document.metadata.filepath
+                )
+                related_files = self.repo_map.get_related_files(
+                    document.metadata.filepath
+                )
+                dependencies = self.repo_map.get_file_dependencies(
+                    document.metadata.filepath
+                )
 
-{file_context}
+                # Build module context
+                module_context = {
+                    "category": module_category,
+                    "related_files": related_files,
+                    "dependencies": dependencies,
+                    "complexity": file_node.complexity,
+                    "line_count": file_node.line_count,
+                    "contributors": file_node.contributors,
+                    "last_modified": file_node.last_modified,
+                    "analysis": file_node.analysis,
+                }
 
-Follow these documentation guidelines:
-1. Start with a clear description of the module's purpose
-2. Document classes with their attributes and methods
-3. Document functions with their parameters, return values, and purpose
-4. Include usage examples where appropriate
-5. Highlight any important dependencies or relationships with other modules
-6. Use proper markdown formatting including headers, code blocks, and lists
-7. Follow standard docstring conventions for the language
-8. Include any relevant notes about edge cases or limitations
-
-The documentation will be rendered in MkDocs with the Material theme, so proper 
-markdown formatting is essential.
+        # Build comprehensive context string
+        context_str = f"""
+File Information:
+----------------
+Path: {document.metadata.filepath}
+Language: {document.metadata.language}
+Size: {document.metadata.size_bytes} bytes
 """
 
-        # Add language-specific prompting
-        language = str(document.metadata.language).lower()
-        if language == "python":
-            prompt += """
-For Python files:
-- Document all public classes and methods
-- Include type annotations in descriptions
-- Adhere to Google or NumPy docstring format in the descriptions
-- For complex functions, include examples in Python code blocks
-"""
-        elif language in ["javascript", "typescript"]:
-            prompt += """
-For JavaScript/TypeScript files:
-- Document exports, components, and functions
-- For React components, document props and state
-- Include TypeScript type information where available
-- Add examples showing component usage or function calls
-"""
-        elif language in ["java", "kotlin"]:
-            prompt += """
-For Java/Kotlin files:
-- Document public classes, interfaces, and methods
-- Include parameter types and return types
-- Document exceptions thrown by methods
-- Show example usage for public APIs
+        if module_context:
+            context_str += f"""
+Module Context:
+--------------
+Category: {module_context['category']}
+Complexity: {module_context['complexity']}
+Lines of Code: {module_context['line_count']}
+Last Modified: {module_context['last_modified']}
+Contributors: {', '.join(module_context['contributors'])}
+
+Dependencies:
+------------
+{chr(10).join(f'- {dep}' for dep in module_context['dependencies'])}
+
+Related Files:
+-------------
+{chr(10).join(f'- {rel}' for rel in module_context['related_files'])}
+
+Code Quality:
+------------
+{chr(10).join(f'- {k}: {v}' for k, v in module_context['analysis']['code_quality'].items())}
+
+Documentation Coverage: {module_context['analysis']['documentation_coverage']}
+Test Coverage: {module_context['analysis']['test_coverage']}
 """
 
-        return prompt
+        # Add additional context if provided
+        if file_context:
+            context_str += f"\nAdditional Context:\n{file_context}"
+
+        # Build documentation requirements
+        requirements = """
+Documentation Requirements:
+-------------------------
+1. Overview
+   - Brief description of the file's purpose
+   - Key functionality and features
+   - Important dependencies and relationships
+
+2. Installation and Setup
+   - Required dependencies
+   - Configuration requirements
+   - Environment setup
+
+3. Usage Guide
+   - Basic usage examples
+   - Common use cases
+   - Best practices
+
+4. API Reference
+   - Detailed documentation of classes and functions
+   - Parameters and return types
+   - Examples for each major component
+
+5. Integration
+   - How to integrate with other modules
+   - Dependencies and requirements
+   - Common integration patterns
+
+6. Advanced Usage
+   - Advanced features and capabilities
+   - Performance considerations
+   - Customization options
+
+7. Troubleshooting
+   - Common issues and solutions
+   - Error handling
+   - Debugging tips
+
+8. Contributing
+   - Development setup
+   - Code style guidelines
+   - Testing requirements
+
+Formatting Guidelines:
+--------------------
+1. Use clear and concise language
+2. Include code examples where relevant
+3. Use proper markdown formatting
+4. Include cross-references to related documentation
+5. Maintain consistent structure across all sections
+"""
+
+        # Add language-specific guidelines
+        language_guidelines = {
+            "python": """
+Python-Specific Guidelines:
+-------------------------
+1. Document classes with:
+   - Class purpose and inheritance
+   - Public methods and properties
+   - Usage examples
+   - Type hints and annotations
+
+2. Document functions with:
+   - Purpose and behavior
+   - Parameters and return types
+   - Exceptions and error handling
+   - Usage examples
+
+3. Include:
+   - Import statements
+   - Type hints
+   - Docstrings
+   - Example usage
+""",
+            "javascript": """
+JavaScript/TypeScript Guidelines:
+------------------------------
+1. Document classes with:
+   - Class purpose and inheritance
+   - Public methods and properties
+   - TypeScript interfaces/types
+   - Usage examples
+
+2. Document functions with:
+   - Purpose and behavior
+   - Parameters and return types
+   - Async/await usage
+   - Example usage
+
+3. Include:
+   - Import/export statements
+   - TypeScript types
+   - JSDoc comments
+   - Example usage
+""",
+            "java": """
+Java/Kotlin Guidelines:
+---------------------
+1. Document classes with:
+   - Class purpose and inheritance
+   - Public methods and properties
+   - Generic types
+   - Usage examples
+
+2. Document methods with:
+   - Purpose and behavior
+   - Parameters and return types
+   - Exceptions
+   - Example usage
+
+3. Include:
+   - Package declarations
+   - Import statements
+   - Javadoc comments
+   - Example usage
+""",
+        }
+
+        # Add language-specific guidelines if available
+        if document.metadata.language.lower() in language_guidelines:
+            requirements += language_guidelines[document.metadata.language.lower()]
+
+        return f"{context_str}\n\n{requirements}"
 
     def _get_relative_doc_path(self, filepath: str) -> Path:
         """Determine the relative path for documentation file.
@@ -243,75 +585,6 @@ For Java/Kotlin files:
         os.makedirs(output_path.parent, exist_ok=True)
 
         return output_path
-
-    def _save_documentation(
-        self, document: Document, content: str, output_path: Path
-    ) -> None:
-        """Save documentation to the output path with appropriate formatting.
-
-        Args:
-            document: Original document
-            content: Generated documentation content
-            output_path: Path to save the documentation
-        """
-        # Determine document title and add front matter
-        file_basename = os.path.basename(document.metadata.filepath)
-        title = os.path.splitext(file_basename)[0]
-
-        # Create front matter
-        front_matter = {
-            "title": title,
-            "summary": self._extract_summary(content),
-            "source_file": document.metadata.filepath,
-            "language": str(document.metadata.language).lower(),
-        }
-
-        # Format content with front matter
-        formatted_content = f"""---
-{yaml.dump(front_matter, default_flow_style=False)}
----
-
-{content}
-
-"""
-
-        # Add source code link at the end
-        formatted_content += f"""
-## Source Code
-
-```{str(document.metadata.language).lower()}
-{document.content}
-```
-"""
-
-        # Write to file
-        with open(output_path, "w") as f:
-            f.write(formatted_content)
-
-    def _extract_summary(self, content: str) -> str:
-        """Extract a summary from documentation content.
-
-        Args:
-            content: Documentation content
-
-        Returns:
-            Summary string (first paragraph or sentence)
-        """
-        # Try to find the first paragraph
-        paragraphs = content.split("\n\n")
-        if paragraphs:
-            # Remove markdown formatting from the first paragraph
-            first_para = re.sub(r"[#*_`]", "", paragraphs[0]).strip()
-
-            # If too long, just take the first sentence
-            if len(first_para) > 150:
-                sentences = first_para.split(".")
-                if sentences:
-                    return sentences[0].strip() + "."
-
-            return first_para
-
-        return "No summary available"
 
     def generate_for_repository(
         self, documents: List[Document], repo_name: str = "", repo_description: str = ""
@@ -574,6 +847,17 @@ The overview should help developers understand the organization and purpose of t
         # Create initial navigation with Home
         nav = [{"Home": "index.md"}]
 
+        # Add Getting Started section
+        nav.append(
+            {
+                "Getting Started": [
+                    {"Installation": "getting-started/installation.md"},
+                    {"Quick Start": "getting-started/quickstart.md"},
+                    {"Configuration": "getting-started/configuration.md"},
+                ]
+            }
+        )
+
         # Add overview pages if any exist
         overview_dir = self.docs_dir / "overview"
         if overview_dir.exists() and any(overview_dir.iterdir()):
@@ -587,7 +871,7 @@ The overview should help developers understand the organization and purpose of t
 
             nav.append(overview_nav)
 
-        # Group documentation files by directory
+        # Group documentation files by directory and type
         grouped_nav = self._group_navigation_by_directory()
 
         # Add grouped navigation items
@@ -607,10 +891,34 @@ The overview should help developers understand the organization and purpose of t
 
             nav.append(api_nav)
 
+        # Add Advanced Topics section
+        nav.append(
+            {
+                "Advanced Topics": [
+                    {"Performance": "advanced/performance.md"},
+                    {"Security": "advanced/security.md"},
+                    {"Deployment": "advanced/deployment.md"},
+                    {"Troubleshooting": "advanced/troubleshooting.md"},
+                ]
+            }
+        )
+
+        # Add Contributing section
+        nav.append(
+            {
+                "Contributing": [
+                    {"Development Guide": "contributing/development.md"},
+                    {"Code Style": "contributing/code-style.md"},
+                    {"Testing": "contributing/testing.md"},
+                    {"Documentation": "contributing/documentation.md"},
+                ]
+            }
+        )
+
         return nav
 
     def _group_navigation_by_directory(self) -> List:
-        """Group navigation items by directory structure.
+        """Group navigation items by directory structure and type.
 
         Returns:
             List of grouped navigation items
@@ -622,7 +930,7 @@ The overview should help developers understand the organization and purpose of t
             if not item.get("path", "").startswith(("index", "overview/", "api/"))
         ]
 
-        # Group by directory
+        # Group by directory and type
         grouped = {}
 
         for item in items:
@@ -639,16 +947,53 @@ The overview should help developers understand the organization and purpose of t
                 if group_name not in grouped:
                     grouped[group_name] = []
 
-                grouped[group_name].append({title: path})
+                # Categorize items by type
+                if "test" in path.lower() or "spec" in path.lower():
+                    category = "Testing"
+                elif "util" in path.lower() or "helper" in path.lower():
+                    category = "Utilities"
+                elif "model" in path.lower() or "schema" in path.lower():
+                    category = "Models"
+                elif "service" in path.lower() or "provider" in path.lower():
+                    category = "Services"
+                elif "controller" in path.lower() or "handler" in path.lower():
+                    category = "Controllers"
+                else:
+                    category = "Core"
+
+                grouped[group_name].append(
+                    {"title": title, "path": path, "category": category}
+                )
             else:
-                # No directory, add directly
-                grouped.setdefault("General", []).append({title: path})
+                # No directory, add to General
+                grouped.setdefault("General", []).append(
+                    {"title": title, "path": path, "category": "Core"}
+                )
 
         # Convert to list format required by MkDocs
         result = []
 
         for group_name, items in grouped.items():
-            result.append({group_name: items})
+            # Sort items by category and title
+            sorted_items = sorted(items, key=lambda x: (x["category"], x["title"]))
+
+            # Group items by category
+            category_groups = {}
+            for item in sorted_items:
+                category = item["category"]
+                if category not in category_groups:
+                    category_groups[category] = []
+                category_groups[category].append({item["title"]: item["path"]})
+
+            # Create navigation structure
+            group_nav = {group_name: []}
+            for category, category_items in category_groups.items():
+                if len(category_items) > 1:
+                    group_nav[group_name].append({category: category_items})
+                else:
+                    group_nav[group_name].extend(category_items)
+
+            result.append(group_nav)
 
         return result
 
