@@ -1,57 +1,90 @@
 [tool.poetry]
 name = "docstra"
-version = "0.1.14"
-description = "An LLM-powered CLI tool and Python package for generating repository-level documentation from code."
-authors = ["Jørgen Andresen Osberg <jorgen.osberg@gmail.com>, Jonathan Selstad Hofstein <>"]
+version = "0.1.15"
+description = "LLM-powered code documentation assistant"
+authors = ["Your Name <your.email@example.com>"]
 readme = "README.md"
-exclude = ["extensions"]
+license = "MIT"
+repository = "https://github.com/yourusername/docstra"
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+]
 
 [tool.poetry.dependencies]
-python = "^3.12"
-langchain = "^0.3.3"
-openai = "^1.51.2"
-langchain-openai = "^0.2.2"
-chromadb = "^0.5.12"
-langchain-chroma = "^0.1.4"
-langchain-community = "^0.3.2"
-uvicorn = "^0.32.0"
-fastapi = "^0.115.4"
-tree-sitter-python = "^0.23.4"
-tree-sitter = "^0.23.2"
-tree-sitter-typescript = "^0.23.2"
-tree-sitter-json = "^0.24.8"
-tree-sitter-markdown = "^0.3.2"
-tree-sitter-javascript = "^0.23.1"
-tree-sitter-html = "^0.23.2"
-langchain-text-splitters = "^0.3.2"
-websockets = "^14.2"
-rich = "^13.9.4"
-click = "^8.1.8"
-redis = "^5.2.1"
-langchain-anthropic = "^0.3.8"
-watchdog = "^6.0.0"
-python-dotenv = "^1.0.1"
-pathspec = "^0.12.1"
-requests = "^2.31.0"
-packaging = "^24.0"
+python = ">=3.11,<4.0"
+pydantic = "^2.10.6"
+chromadb = "^0.6.3"
+transformers = "^4.50.1"
+sentence-transformers = "^4.0.1"
+langchain = "^0.3.21"
+langchain-community = "^0.3.20"
+tree-sitter = "^0.24.0"
+typer = "^0.9.0"
+rich = "^13.6.0"
+anthropic = "^0.49.0"
+openai = "^1.68.2"
+tiktoken = "^0.9.0"
+python-dotenv = "^1.0.0"
+tenacity = "^9.0.0"
+mkdocs = "^1.6.1"
+tree-sitter-language-pack = "^0.6.1"
+langchain-huggingface = "^0.1.2"
+langchain-ollama = "^0.3.0"
+langchain-openai = "^0.3.11"
+torch = "^2.6.0"
+jinaai = "^0.2.10"
+einops = "^0.8.1"
+mkdocs-material = "^9.6.11"
+mkdocstrings = "^0.29.1"
 
 [tool.poetry.group.dev.dependencies]
-pytest = "^8.0.0"
-pytest-cov = "^4.1.0"
-flake8 = "^7.1.2"
+pytest = "^8.3.5"
+pytest-cov = "^6.0.0"
+black = "^25.1.0"
+isort = "^6.0.1"
+ruff = "^0.11.2"
 mypy = "^1.15.0"
-pylint = "^3.3.5"
+pre-commit = "^4.2.0"
+bandit = "^1.8.3"
+sphinx = "^8.2.3"
+furo = "^2024.8.6"
 
 [tool.poetry.scripts]
-docstra = "docstra.cli.main:main"
-
-[tool.pytest.ini_options]
-testpaths = ["tests"]
-python_files = ["test_*.py"]
-python_classes = ["Test*"]
-python_functions = ["test_*"]
-addopts = "-v --cov=docstra --cov-report=term-missing"
+docstra = "docstra.core.cli:app"
 
 [build-system]
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
+
+[tool.black]
+line-length = 88
+target-version = ["py38", "py39", "py310", "py311"]
+
+[tool.isort]
+profile = "black"
+line_length = 88
+
+[tool.ruff]
+select = ["E", "F", "B", "I"]
+ignore = []
+line-length = 88
+target-version = "py38"
+
+[tool.mypy]
+python_version = "3.8"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = "test_*.py"
+python_functions = "test_*"
