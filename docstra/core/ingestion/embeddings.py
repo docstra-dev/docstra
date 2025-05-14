@@ -127,7 +127,7 @@ class OpenAIEmbeddingGenerator(EmbeddingGenerator):
 class OllamaEmbeddingGenerator(EmbeddingGenerator):
     """Embedding generator using Ollama models."""
 
-    def __init__(self, model_name: str = "llama3"):
+    def __init__(self, model_name: str = "llama3.2"):
         """Initialize the Ollama embedding generator.
 
         Args:
@@ -183,7 +183,7 @@ class EmbeddingFactory:
             model_name = kwargs.get("model_name", "text-embedding-3-small")
             return OpenAIEmbeddingGenerator(model_name=model_name)
         elif embedding_type.lower() == "ollama":
-            model_name = kwargs.get("model_name", "llama3")
+            model_name = kwargs.get("model_name", "llama3.2")
             return OllamaEmbeddingGenerator(model_name=model_name)
         else:
             raise ValueError(f"Unsupported embedding type: {embedding_type}")

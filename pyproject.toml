@@ -47,8 +47,6 @@ mkdocstrings = "^0.29.1"
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.3.5"
 pytest-cov = "^6.0.0"
-black = "^25.1.0"
-isort = "^6.0.1"
 ruff = "^0.11.2"
 mypy = "^1.15.0"
 pre-commit = "^4.2.0"
@@ -59,32 +57,9 @@ furo = "^2024.8.6"
 [tool.poetry.scripts]
 docstra = "docstra.core.cli:app"
 
-[build-system]
-requires = ["poetry-core"]
-build-backend = "poetry.core.masonry.api"
-
-[tool.black]
-line-length = 88
-target-version = ["py38", "py39", "py310", "py311"]
-
-[tool.isort]
-profile = "black"
-line_length = 88
-
 [tool.ruff]
-select = ["E", "F", "B", "I"]
-ignore = []
 line-length = 88
-target-version = "py38"
+target-version = "py311"
 
 [tool.mypy]
-python_version = "3.8"
-warn_return_any = true
-warn_unused_configs = true
-disallow_untyped_defs = true
-disallow_incomplete_defs = true
-
-[tool.pytest.ini_options]
-testpaths = ["tests"]
-python_files = "test_*.py"
-python_functions = "test_*"
+python_version = "3.11"

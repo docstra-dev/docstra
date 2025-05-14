@@ -6,7 +6,7 @@ Document retrieval using ChromaDB.
 
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional
 
 from docstra.core.ingestion.embeddings import EmbeddingGenerator
 from docstra.core.ingestion.storage import ChromaDBStorage

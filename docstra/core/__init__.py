@@ -9,41 +9,24 @@ __version__ = "0.1.0"
 from docstra.core.config.settings import (
     ConfigManager,
     ModelProvider,
-    UserConfig,
 )
 from docstra.core.document_processing.chunking import (
     ChunkingPipeline,
-    ChunkingStrategy,
     SemanticChunking,
-    SlidingWindowChunking,
     SyntaxAwareChunking,
 )
 from docstra.core.document_processing.document import (
-    CodeChunk,
     Document,
-    DocumentMetadata,
-    DocumentType,
 )
 from docstra.core.document_processing.extractor import (
     DocumentProcessor,
-    MetadataExtractor,
 )
 from docstra.core.document_processing.parser import CodeParser
 from docstra.core.indexing.code_index import (
-    CodebaseIndex,
     CodebaseIndexer,
-)
-from docstra.core.indexing.repo_map import (
-    DirectoryNode,
-    FileNode,
-    RepositoryMap,
 )
 from docstra.core.ingestion.embeddings import (
     EmbeddingFactory,
-    EmbeddingGenerator,
-    HuggingFaceEmbeddingGenerator,
-    OllamaEmbeddingGenerator,
-    OpenAIEmbeddingGenerator,
 )
 from docstra.core.ingestion.storage import (
     ChromaDBStorage,
@@ -53,10 +36,6 @@ from docstra.core.llm.anthropic import AnthropicClient
 from docstra.core.llm.local import LocalModelClient
 from docstra.core.llm.ollama import OllamaClient
 from docstra.core.llm.openai import OpenAIClient
-from docstra.core.llm.prompt import (
-    PromptBuilder,
-    PromptTemplate,
-)
 from docstra.core.retrieval.chroma import ChromaRetriever
 from docstra.core.retrieval.hybrid import HybridRetriever
 

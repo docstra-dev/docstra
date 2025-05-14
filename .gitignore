@@ -165,3 +165,7 @@ cython_debug/
 */.docstra/
 *.docstra/
 .docstra
+.DS_Store
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/

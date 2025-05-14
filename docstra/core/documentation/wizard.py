@@ -1,69 +1,70 @@
 import os
-import json
-from pathlib import Path
-from typing import List, Dict, Any, Optional
+from typing import List
 
-import typer
 from rich.console import Console
 from rich.prompt import Prompt, Confirm
-from rich import print as rprint
 from rich.panel import Panel
-from rich.markdown import Markdown
+
+from docstra.core.config.settings import ConfigManager, DocumentationConfig
 
 
 class DocumentationWizard:
     """Interactive wizard for documentation generation setup."""
 
-    def __init__(self, console: Console, base_path: str):
+    def __init__(self, console: Console, base_path: str, config_manager: ConfigManager):
         """Initialize the documentation wizard.
 
         Args:
             console: Rich console for UI
             base_path: Base path for the codebase
+            config_manager: The configuration manager instance
         """
         self.console = console
         self.base_path = os.path.abspath(base_path)
-        self.config: Dict[str, Any] = {
-            "name": os.path.basename(self.base_path),
-            "description": "",
-            "version": "0.1.0",
-            "include_dirs": [],
-            "exclude_dirs": [".git", "__pycache__", "node_modules", "venv", ".env"],
-            "exclude_files": [],
-            "theme": "default",
-            "output_dir": "./docs",
-            "format": "html",
-        }
+        self.config_manager = config_manager
 
-    def run(self) -> Dict[str, Any]:
-        """Run the interactive wizard.
+        # Load existing config from ConfigManager or use defaults
+        existing_doc_config = self.config_manager.config.documentation
+        if existing_doc_config:
+            # Convert Pydantic model to dict for self.config, ensuring all keys exist
+            self.config = existing_doc_config.model_dump()
+        else:
+            # Use defaults from DocumentationConfig Pydantic model
+            default_doc_config = DocumentationConfig()
+            self.config = default_doc_config.model_dump()
 
-        Returns:
-            Configuration dictionary
-        """
+        # Ensure project name has a fallback if not in config
+        if not self.config.get("project_name"):
+            self.config["project_name"] = os.path.basename(self.base_path)
+
+    def run(self) -> None:
+        """Run the interactive wizard."""
         self.console.print(Panel("Documentation Generation Wizard", expand=False))
         self.console.print("Let's configure your documentation settings.\n")
 
         # Project information
-        self.config["name"] = Prompt.ask("Project name", default=self.config["name"])
-
-        self.config["description"] = Prompt.ask(
-            "Project description", default=self.config["description"]
+        self.config["project_name"] = Prompt.ask(
+            "Project name", default=self.config.get("project_name")
         )
 
-        self.config["version"] = Prompt.ask(
-            "Project version", default=self.config["version"]
+        self.config["project_description"] = Prompt.ask(
+            "Project description", default=self.config.get("project_description", "")
+        )
+
+        self.config["project_version"] = Prompt.ask(
+            "Project version", default=self.config.get("project_version", "0.1.0")
         )
 
         # Output configuration
         self.config["output_dir"] = Prompt.ask(
-            "Output directory", default=self.config["output_dir"]
+            "Output directory", default=self.config.get("output_dir", "./docs")
         )
 
         formats = ["html", "markdown", "rst"]
+        current_format = self.config.get("format", "markdown")
         format_idx = 0
         for i, fmt in enumerate(formats):
-            if fmt == self.config["format"]:
+            if fmt == current_format:
                 format_idx = i
                 break
 
@@ -86,44 +87,53 @@ class DocumentationWizard:
             self.console.print(f"[cyan]{key}:[/cyan] {value}")
 
         # Save configuration
-        if Confirm.ask("Save this configuration for future use?", default=True):
+        if Confirm.ask("Save this configuration?", default=True):
             self._save_config()
-
-        return self.config
+        else:
+            self.console.print("[yellow]Configuration not saved.[/]")
 
     def _configure_directories(self) -> None:
-        """Configure included and excluded directories."""
+        """Configure included and excluded directories/patterns."""
         # First, discover directories
-        dirs = self._discover_directories()
+        self._discover_directories()
 
         # Show available directories
         self.console.print("\nAvailable directories:")
-        for i, directory in enumerate(dirs):
-            is_excluded = directory in self.config["exclude_dirs"]
-            color = "red" if is_excluded else "green"
-            marker = "✗" if is_excluded else "✓"
-            self.console.print(f"  [{color}]{marker}[/{color}] {directory}")
-
-        # Select directories to exclude
         self.console.print(
-            "\nSelect directories to exclude (comma-separated list, empty to keep current):"
+            "\nUniversal file/directory exclusion patterns are in .docstra/.docstraignore."
+        )
+        self.console.print(
+            "Enter additional comma-separated gitignore-style patterns to exclude specifically for documentation (e.g., 'tests/*', '*.tmp'):"
         )
         exclude_input = Prompt.ask(
-            "Exclude", default=",".join(self.config["exclude_dirs"])
+            "Documentation Exclude Patterns",
+            default=",".join(self.config.get("exclude_patterns") or []),
         )
-
         if exclude_input.strip():
-            self.config["exclude_dirs"] = [d.strip() for d in exclude_input.split(",")]
+            self.config["exclude_patterns"] = [
+                p.strip() for p in exclude_input.split(",")
+            ]
+        else:
+            self.config["exclude_patterns"] = []
 
         # Ask if user wants to specify specific directories to include
         if Confirm.ask(
-            "Do you want to specify specific directories to include?", default=False
+            "Do you want to specify specific directories to include for documentation?",
+            default=False,
         ):
-            include_input = Prompt.ask("Include (comma-separated list)")
+            include_input = Prompt.ask(
+                "Include Directories (comma-separated list)",
+                default=",".join(self.config.get("include_dirs") or []),
+            )
             if include_input.strip():
                 self.config["include_dirs"] = [
                     d.strip() for d in include_input.split(",")
                 ]
+            else:
+                self.config["include_dirs"] = []
+        else:
+            if "include_dirs" not in self.config or self.config["include_dirs"] is None:
+                self.config["include_dirs"] = []
 
     def _discover_directories(self) -> List[str]:
         """Discover directories in the base path.
@@ -145,9 +155,10 @@ class DocumentationWizard:
         """Configure advanced documentation options."""
         # Theme selection
         themes = ["default", "readthedocs", "material", "sphinx_rtd_theme"]
+        current_theme = self.config.get("theme", "default")
         theme_idx = 0
         for i, theme in enumerate(themes):
-            if theme == self.config["theme"]:
+            if theme == current_theme:
                 theme_idx = i
                 break
 
@@ -156,59 +167,53 @@ class DocumentationWizard:
         )
         self.config["theme"] = theme_choice
 
-        # File exclusion patterns
-        exclude_files = Prompt.ask(
-            "Exclude file patterns (comma-separated, e.g. *.test.py,*.spec.js)",
-            default=(
-                ",".join(self.config["exclude_files"])
-                if self.config["exclude_files"]
-                else ""
-            ),
-        )
-
-        if exclude_files.strip():
-            self.config["exclude_files"] = [f.strip() for f in exclude_files.split(",")]
-
     def _save_config(self) -> None:
-        """Save configuration to a file."""
-        config_dir = os.path.join(self.base_path, ".docstra")
-        os.makedirs(config_dir, exist_ok=True)
-
-        config_path = os.path.join(config_dir, "docs_config.json")
-        with open(config_path, "w") as f:
-            json.dump(self.config, f, indent=2)
-
-        self.console.print(f"[green]Configuration saved to:[/] {config_path}")
-
-
-def load_wizard_config(path: str) -> Optional[Dict[str, Any]]:
-    """Load wizard configuration from a file.
-
-    Args:
-        path: Path to the codebase
-
-    Returns:
-        Configuration dictionary if found, None otherwise
-    """
-    config_path = os.path.join(path, ".docstra", "docs_config.json")
-    if os.path.exists(config_path):
+        """Save configuration to the ConfigManager."""
         try:
-            with open(config_path, "r") as f:
-                return json.load(f)
-        except Exception:
-            return None
-    return None
+            # Update the documentation section of the main config
+            if self.config_manager.config.documentation is None:
+                self.config_manager.config.documentation = DocumentationConfig(
+                    include_dirs=self.config.get("include_dirs"),
+                    exclude_patterns=self.config.get("exclude_patterns"),
+                    output_dir=self.config.get("output_dir", "./docs"),
+                    format=self.config.get("format", "markdown"),
+                    theme=self.config.get("theme", "default"),
+                    project_name=self.config.get("project_name"),
+                    project_description=self.config.get("project_description"),
+                    project_version=self.config.get("project_version", "0.1.0"),
+                    documentation_structure=self.config.get(
+                        "documentation_structure", "file_based"
+                    ),
+                    module_doc_depth=self.config.get("module_doc_depth", "full"),
+                    llm_style_prompt=self.config.get("llm_style_prompt"),
+                    max_workers_ollama=self.config.get("max_workers_ollama", 1),
+                    max_workers_api=self.config.get("max_workers_api", 4),
+                    max_workers_default=self.config.get("max_workers_default"),
+                )
+            else:
+                for key, value in self.config.items():
+                    if hasattr(self.config_manager.config.documentation, key):
+                        setattr(self.config_manager.config.documentation, key, value)
+                    else:
+                        # This case should ideally not happen if self.config is derived from DocumentationConfig model_dump
+                        self.console.print(
+                            f"[yellow]Warning: Unknown key '{key}' found in wizard config. Skipping.[/]"
+                        )
+
+            self.config_manager.save()
+            self.console.print(
+                f"[green]Configuration saved to:[/] {self.config_manager.config_path}"
+            )
+        except Exception as e:
+            self.console.print(f"[bold red]Error saving configuration:[/] {str(e)}")
+            self.console.print(
+                f"Please check your main configuration file: {self.config_manager.config_path}"
+            )
 
 
-def run_documentation_wizard(console: Console, path: str) -> Dict[str, Any]:
-    """Run the documentation wizard.
-
-    Args:
-        console: Rich console
-        path: Path to the codebase
-
-    Returns:
-        Documentation configuration
-    """
-    wizard = DocumentationWizard(console, path)
-    return wizard.run()
+def run_documentation_wizard(
+    console: Console, path: str, config_manager: ConfigManager
+) -> None:
+    """Run the documentation wizard."""
+    wizard = DocumentationWizard(console, path, config_manager)
+    wizard.run()

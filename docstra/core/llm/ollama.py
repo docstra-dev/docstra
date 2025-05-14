@@ -41,13 +41,21 @@ class OllamaClient:
         # Initialize prompt builder
         self.prompt_builder = PromptBuilder()
 
-        # Check if Ollama is running
-        self._check_ollama()
+        # Check if Ollama is running, but don't fail hard if it's not
+        self.connected = False
+        try:
+            self._check_ollama()
+            self.connected = True
+        except ConnectionError as e:
+            print(f"Warning: Could not connect to Ollama API: {e}")
+            print("The client will still be created, but generating text might fail.")
 
     def _check_ollama(self) -> None:
         """Check if Ollama is running."""
         try:
-            response = requests.get(f"{self.api_base}/api/tags")
+            response = requests.get(
+                f"{self.api_base}/api/tags", timeout=2.0
+            )  # Add a timeout
             if response.status_code != 200:
                 raise ConnectionError(
                     f"Ollama API returned status code {response.status_code}"
@@ -71,6 +79,14 @@ class OllamaClient:
         Returns:
             Generated response or stream
         """
+        # Check connection before generating
+        if not self.connected:
+            try:
+                self._check_ollama()
+                self.connected = True
+            except ConnectionError as e:
+                return f"Error: Could not connect to Ollama API: {e}. Please make sure Ollama is running."
+
         url = f"{self.api_base}/api/generate"
 
         data = {

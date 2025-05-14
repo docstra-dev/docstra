@@ -5,13 +5,11 @@ Code parser using Tree-sitter for extracting structure and metadata from code fi
 
 from __future__ import annotations
 
-import tempfile
-from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict, List, Literal, Optional, cast
 
 import tree_sitter
 from tree_sitter import Language, Parser, Tree
-from tree_sitter_language_pack import get_binding, get_language, get_parser
+from tree_sitter_language_pack import get_language, get_parser
 
 from docstra.core.document_processing.document import (
     CodeChunk,
@@ -39,7 +37,7 @@ class CodeParser:
         DocumentType.RUBY: "ruby",
     }
 
-    def __init__(self, languages_dir: Optional[str] = None):
+    def __init__(self, languages_dir: Optional[str] = None) -> None:
         """Initialize the parser with Tree-sitter languages.
 
         Args:
@@ -55,7 +53,171 @@ class CodeParser:
             for lang_name in self.LANGUAGES.values():
                 try:
                     # Check if we can get this language
-                    get_language(lang_name)
+                    get_language(
+                        cast(
+                            Literal[
+                                "actionscript",
+                                "ada",
+                                "agda",
+                                "arduino",
+                                "asm",
+                                "astro",
+                                "bash",
+                                "beancount",
+                                "bibtex",
+                                "bicep",
+                                "bitbake",
+                                "c",
+                                "cairo",
+                                "capnp",
+                                "chatito",
+                                "clarity",
+                                "clojure",
+                                "cmake",
+                                "comment",
+                                "commonlisp",
+                                "cpon",
+                                "cpp",
+                                "csharp",
+                                "css",
+                                "csv",
+                                "cuda",
+                                "d",
+                                "dart",
+                                "dockerfile",
+                                "doxygen",
+                                "dtd",
+                                "elisp",
+                                "elixir",
+                                "elm",
+                                "embeddedtemplate",
+                                "erlang",
+                                "fennel",
+                                "firrtl",
+                                "fish",
+                                "fortran",
+                                "func",
+                                "gdscript",
+                                "gitattributes",
+                                "gitcommit",
+                                "gitignore",
+                                "gleam",
+                                "glsl",
+                                "gn",
+                                "go",
+                                "gomod",
+                                "gosum",
+                                "groovy",
+                                "gstlaunch",
+                                "hack",
+                                "hare",
+                                "haskell",
+                                "haxe",
+                                "hcl",
+                                "heex",
+                                "hlsl",
+                                "html",
+                                "hyprlang",
+                                "ispc",
+                                "janet",
+                                "java",
+                                "javascript",
+                                "jsdoc",
+                                "json",
+                                "jsonnet",
+                                "julia",
+                                "kconfig",
+                                "kdl",
+                                "kotlin",
+                                "latex",
+                                "linkerscript",
+                                "llvm",
+                                "lua",
+                                "luadoc",
+                                "luap",
+                                "luau",
+                                "make",
+                                "markdown",
+                                "matlab",
+                                "mermaid",
+                                "meson",
+                                "ninja",
+                                "nix",
+                                "nqc",
+                                "objc",
+                                "odin",
+                                "org",
+                                "pascal",
+                                "pem",
+                                "perl",
+                                "pgn",
+                                "php",
+                                "po",
+                                "pony",
+                                "powershell",
+                                "printf",
+                                "prisma",
+                                "properties",
+                                "proto",
+                                "psv",
+                                "puppet",
+                                "purescript",
+                                "pymanifest",
+                                "python",
+                                "qmldir",
+                                "qmljs",
+                                "query",
+                                "r",
+                                "racket",
+                                "re2c",
+                                "readline",
+                                "requirements",
+                                "ron",
+                                "rst",
+                                "ruby",
+                                "rust",
+                                "scala",
+                                "scheme",
+                                "scss",
+                                "smali",
+                                "smithy",
+                                "solidity",
+                                "sparql",
+                                "swift",
+                                "sql",
+                                "squirrel",
+                                "starlark",
+                                "svelte",
+                                "tablegen",
+                                "tcl",
+                                "terraform",
+                                "test",
+                                "thrift",
+                                "toml",
+                                "tsv",
+                                "tsx",
+                                "twig",
+                                "typescript",
+                                "typst",
+                                "udev",
+                                "ungrammar",
+                                "uxntal",
+                                "v",
+                                "verilog",
+                                "vhdl",
+                                "vim",
+                                "vue",
+                                "wgsl",
+                                "xcompose",
+                                "xml",
+                                "yaml",
+                                "yuck",
+                                "zig",
+                                "magik",
+                            ],
+                            lang_name,
+                        )
+                    )
                     self._available_languages.add(lang_name)
                 except Exception:
                     # Language not available in the pack
@@ -112,11 +274,339 @@ class CodeParser:
 
         try:
             # Get parser from language pack
-            parser = get_parser(lang_name)
+            parser = get_parser(
+                cast(
+                    Literal[
+                        "actionscript",
+                        "ada",
+                        "agda",
+                        "arduino",
+                        "asm",
+                        "astro",
+                        "bash",
+                        "beancount",
+                        "bibtex",
+                        "bicep",
+                        "bitbake",
+                        "c",
+                        "cairo",
+                        "capnp",
+                        "chatito",
+                        "clarity",
+                        "clojure",
+                        "cmake",
+                        "comment",
+                        "commonlisp",
+                        "cpon",
+                        "cpp",
+                        "csharp",
+                        "css",
+                        "csv",
+                        "cuda",
+                        "d",
+                        "dart",
+                        "dockerfile",
+                        "doxygen",
+                        "dtd",
+                        "elisp",
+                        "elixir",
+                        "elm",
+                        "embeddedtemplate",
+                        "erlang",
+                        "fennel",
+                        "firrtl",
+                        "fish",
+                        "fortran",
+                        "func",
+                        "gdscript",
+                        "gitattributes",
+                        "gitcommit",
+                        "gitignore",
+                        "gleam",
+                        "glsl",
+                        "gn",
+                        "go",
+                        "gomod",
+                        "gosum",
+                        "groovy",
+                        "gstlaunch",
+                        "hack",
+                        "hare",
+                        "haskell",
+                        "haxe",
+                        "hcl",
+                        "heex",
+                        "hlsl",
+                        "html",
+                        "hyprlang",
+                        "ispc",
+                        "janet",
+                        "java",
+                        "javascript",
+                        "jsdoc",
+                        "json",
+                        "jsonnet",
+                        "julia",
+                        "kconfig",
+                        "kdl",
+                        "kotlin",
+                        "latex",
+                        "linkerscript",
+                        "llvm",
+                        "lua",
+                        "luadoc",
+                        "luap",
+                        "luau",
+                        "make",
+                        "markdown",
+                        "matlab",
+                        "mermaid",
+                        "meson",
+                        "ninja",
+                        "nix",
+                        "nqc",
+                        "objc",
+                        "odin",
+                        "org",
+                        "pascal",
+                        "pem",
+                        "perl",
+                        "pgn",
+                        "php",
+                        "po",
+                        "pony",
+                        "powershell",
+                        "printf",
+                        "prisma",
+                        "properties",
+                        "proto",
+                        "psv",
+                        "puppet",
+                        "purescript",
+                        "pymanifest",
+                        "python",
+                        "qmldir",
+                        "qmljs",
+                        "query",
+                        "r",
+                        "racket",
+                        "re2c",
+                        "readline",
+                        "requirements",
+                        "ron",
+                        "rst",
+                        "ruby",
+                        "rust",
+                        "scala",
+                        "scheme",
+                        "scss",
+                        "smali",
+                        "smithy",
+                        "solidity",
+                        "sparql",
+                        "swift",
+                        "sql",
+                        "squirrel",
+                        "starlark",
+                        "svelte",
+                        "tablegen",
+                        "tcl",
+                        "terraform",
+                        "test",
+                        "thrift",
+                        "toml",
+                        "tsv",
+                        "tsx",
+                        "twig",
+                        "typescript",
+                        "typst",
+                        "udev",
+                        "ungrammar",
+                        "uxntal",
+                        "v",
+                        "verilog",
+                        "vhdl",
+                        "vim",
+                        "vue",
+                        "wgsl",
+                        "xcompose",
+                        "xml",
+                        "yaml",
+                        "yuck",
+                        "zig",
+                        "magik",
+                    ],
+                    lang_name,
+                )
+            )
 
             # Cache the parser and language for future use
             self._parsers[doc_type] = parser
-            self._languages[doc_type] = get_language(lang_name)
+            self._languages[doc_type] = get_language(
+                cast(
+                    Literal[
+                        "actionscript",
+                        "ada",
+                        "agda",
+                        "arduino",
+                        "asm",
+                        "astro",
+                        "bash",
+                        "beancount",
+                        "bibtex",
+                        "bicep",
+                        "bitbake",
+                        "c",
+                        "cairo",
+                        "capnp",
+                        "chatito",
+                        "clarity",
+                        "clojure",
+                        "cmake",
+                        "comment",
+                        "commonlisp",
+                        "cpon",
+                        "cpp",
+                        "csharp",
+                        "css",
+                        "csv",
+                        "cuda",
+                        "d",
+                        "dart",
+                        "dockerfile",
+                        "doxygen",
+                        "dtd",
+                        "elisp",
+                        "elixir",
+                        "elm",
+                        "embeddedtemplate",
+                        "erlang",
+                        "fennel",
+                        "firrtl",
+                        "fish",
+                        "fortran",
+                        "func",
+                        "gdscript",
+                        "gitattributes",
+                        "gitcommit",
+                        "gitignore",
+                        "gleam",
+                        "glsl",
+                        "gn",
+                        "go",
+                        "gomod",
+                        "gosum",
+                        "groovy",
+                        "gstlaunch",
+                        "hack",
+                        "hare",
+                        "haskell",
+                        "haxe",
+                        "hcl",
+                        "heex",
+                        "hlsl",
+                        "html",
+                        "hyprlang",
+                        "ispc",
+                        "janet",
+                        "java",
+                        "javascript",
+                        "jsdoc",
+                        "json",
+                        "jsonnet",
+                        "julia",
+                        "kconfig",
+                        "kdl",
+                        "kotlin",
+                        "latex",
+                        "linkerscript",
+                        "llvm",
+                        "lua",
+                        "luadoc",
+                        "luap",
+                        "luau",
+                        "make",
+                        "markdown",
+                        "matlab",
+                        "mermaid",
+                        "meson",
+                        "ninja",
+                        "nix",
+                        "nqc",
+                        "objc",
+                        "odin",
+                        "org",
+                        "pascal",
+                        "pem",
+                        "perl",
+                        "pgn",
+                        "php",
+                        "po",
+                        "pony",
+                        "powershell",
+                        "printf",
+                        "prisma",
+                        "properties",
+                        "proto",
+                        "psv",
+                        "puppet",
+                        "purescript",
+                        "pymanifest",
+                        "python",
+                        "qmldir",
+                        "qmljs",
+                        "query",
+                        "r",
+                        "racket",
+                        "re2c",
+                        "readline",
+                        "requirements",
+                        "ron",
+                        "rst",
+                        "ruby",
+                        "rust",
+                        "scala",
+                        "scheme",
+                        "scss",
+                        "smali",
+                        "smithy",
+                        "solidity",
+                        "sparql",
+                        "swift",
+                        "sql",
+                        "squirrel",
+                        "starlark",
+                        "svelte",
+                        "tablegen",
+                        "tcl",
+                        "terraform",
+                        "test",
+                        "thrift",
+                        "toml",
+                        "tsv",
+                        "tsx",
+                        "twig",
+                        "typescript",
+                        "typst",
+                        "udev",
+                        "ungrammar",
+                        "uxntal",
+                        "v",
+                        "verilog",
+                        "vhdl",
+                        "vim",
+                        "vue",
+                        "wgsl",
+                        "xcompose",
+                        "xml",
+                        "yaml",
+                        "yuck",
+                        "zig",
+                        "magik",
+                    ],
+                    lang_name,
+                )
+            )
 
             return parser
         except Exception as e:
@@ -173,7 +663,7 @@ class CodeParser:
         root_node = tree.root_node
 
         # Find chunking points (functions, classes, etc.)
-        chunking_nodes = []
+        chunking_nodes: List[tree_sitter.Node] = []
         self._collect_nodes_by_type(
             root_node,
             [
@@ -197,7 +687,12 @@ class CodeParser:
                 "_declaration", ""
             )
             name_node = self._find_name_node(node)
-            symbols = [name_node.text.decode("utf-8")] if name_node else []
+            symbol = (
+                self.safe_decode(name_node.text)
+                if name_node and name_node.text is not None
+                else None
+            )
+            symbols = [symbol] if symbol is not None else []
 
             # Find parent symbols
             parent_symbols = self._find_parent_symbols(node)
@@ -292,7 +787,9 @@ class CodeParser:
             if current.type in ["class_definition", "class_declaration"]:
                 name_node = self._find_name_node(current)
                 if name_node:
-                    parents.append(name_node.text.decode("utf-8"))
+                    parents.append(
+                        self.safe_decode(name_node.text) if name_node else ""
+                    )
 
             current = current.parent
 
@@ -318,7 +815,7 @@ class CodeParser:
         for node in nodes:
             name_node = self._find_name_node(node)
             if name_node:
-                symbol_name = name_node.text.decode("utf-8")
+                symbol_name = self.safe_decode(name_node.text)
                 line_number = node.start_point[0] + 1
 
                 if symbol_name in symbols:
@@ -347,7 +844,7 @@ class CodeParser:
         )
 
         for import_node in import_nodes:
-            imports.append(import_node.text.decode("utf-8").strip())
+            imports.append(self.safe_decode(import_node.text) if import_node else "")
 
         return imports
 
@@ -368,7 +865,7 @@ class CodeParser:
         for class_node in class_nodes:
             name_node = self._find_name_node(class_node)
             if name_node:
-                classes.append(name_node.text.decode("utf-8"))
+                classes.append(self.safe_decode(name_node.text) if name_node else "")
 
         return classes
 
@@ -389,7 +886,7 @@ class CodeParser:
         for function_node in function_nodes:
             name_node = self._find_name_node(function_node)
             if name_node:
-                functions.append(name_node.text.decode("utf-8"))
+                functions.append(self.safe_decode(name_node.text) if name_node else "")
 
         return functions
 
@@ -408,7 +905,7 @@ class CodeParser:
         self._collect_nodes_by_type(node, ["import_statement"], import_nodes)
 
         for import_node in import_nodes:
-            imports.append(import_node.text.decode("utf-8").strip())
+            imports.append(self.safe_decode(import_node.text) if import_node else "")
 
         return imports
 
@@ -429,7 +926,7 @@ class CodeParser:
         for class_node in class_nodes:
             name_node = self._find_name_node(class_node)
             if name_node:
-                classes.append(name_node.text.decode("utf-8"))
+                classes.append(self.safe_decode(name_node.text) if name_node else "")
 
         return classes
 
@@ -452,6 +949,9 @@ class CodeParser:
         for function_node in function_nodes:
             name_node = self._find_name_node(function_node)
             if name_node:
-                functions.append(name_node.text.decode("utf-8"))
+                functions.append(self.safe_decode(name_node.text) if name_node else "")
 
         return functions
+
+    def safe_decode(self, b: Optional[bytes]) -> str:
+        return b.decode("utf-8") if b is not None else ""

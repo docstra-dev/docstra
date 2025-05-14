@@ -8,6 +8,7 @@ from __future__ import annotations
 from enum import Enum
 from pathlib import Path
 from typing import Dict, List, Optional, Union
+import uuid
 
 from pydantic import BaseModel, Field
 
@@ -112,6 +113,7 @@ class DocumentMetadata(BaseModel):
             size_bytes=size,
             last_modified=mtime,
             line_count=line_count,
+            module_docstring=None,
         )
 
 
@@ -156,4 +158,4 @@ class Document(BaseModel):
         except Exception as e:
             content = f"Error reading file: {str(e)}"
 
-        return cls(content=content, metadata=metadata)
+        return cls(content=content, metadata=metadata, embedding_id=str(uuid.uuid4()))

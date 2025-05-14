@@ -1,17 +1,17 @@
 # File: ./docstra/core/documentation/setup.py
 
-import os
-import sys
-import subprocess
-from pathlib import Path
 import argparse
+import os
+import subprocess
+import sys
+from pathlib import Path
+from typing import List
 
 
-def check_dependencies():
+def check_dependencies() -> List[str]:
     """Check if required dependencies are installed."""
     dependencies = ["mkdocs", "mkdocs-material", "pymdown-extensions", "mkdocstrings"]
-
-    missing = []
+    missing: List[str] = []
 
     for dep in dependencies:
         try:
@@ -36,7 +36,7 @@ def check_dependencies():
     return missing
 
 
-def install_dependencies(missing_deps):
+def install_dependencies(missing_deps: List[str]) -> bool:
     """Install missing dependencies."""
     if not missing_deps:
         return True
@@ -54,7 +54,7 @@ def install_dependencies(missing_deps):
         return False
 
 
-def setup_mkdocs_environment(output_dir):
+def setup_mkdocs_environment(output_dir: str) -> bool:
     """Set up a basic MkDocs environment in the output directory."""
     output_path = Path(output_dir)
 
@@ -118,7 +118,7 @@ nav:
     return True
 
 
-def main():
+def main() -> int:
     """Main entry point for the documentation setup script."""
     parser = argparse.ArgumentParser(
         description="Set up documentation environment for Docstra"

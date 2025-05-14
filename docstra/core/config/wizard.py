@@ -1,25 +1,18 @@
 # File: ./docstra/core/config/wizard.py
 
 import os
-import json
 from enum import Enum
-from pathlib import Path
-from typing import Dict, Any, Optional, List, Union, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from rich.console import Console
-from rich.prompt import Prompt, Confirm
 from rich.panel import Panel
-from rich import print as rprint
+from rich.prompt import Confirm, Prompt
 from rich.table import Table
 
 from docstra.core.config.settings import (
     ConfigManager,
     ModelProvider,
     UserConfig,
-    ModelConfig,
-    EmbeddingConfig,
-    ProcessingConfig,
-    StorageConfig,
 )
 
 
@@ -46,7 +39,7 @@ class ConfigField:
         required: bool = False,
         sensitive: bool = False,
         advanced: bool = False,
-        validator: Optional[callable] = None,
+        validator: Optional[Callable[[Any], Tuple[bool, str]]] = None,
     ):
         """Initialize a configuration field.
 
@@ -128,7 +121,7 @@ class ConfigWizard:
             # Try to load local config, or create a new one
             try:
                 self.local_config_manager = ConfigManager(local_config_path)
-            except:
+            except Exception:
                 # No local config exists yet, we'll create one during the wizard
                 self.local_config_manager = ConfigManager(local_config_path)
 
@@ -150,7 +143,7 @@ class ConfigWizard:
                 path="model.provider",
                 description="LLM provider to use (anthropic, openai, ollama, local)",
                 choices=[p.value for p in ModelProvider],
-                default=ModelProvider.ANTHROPIC.value,
+                default=ModelProvider.OLLAMA.value,
                 required=True,
                 scope=ConfigScope.BOTH,
             )
@@ -161,7 +154,7 @@ class ConfigWizard:
                 name="Model Name",
                 path="model.model_name",
                 description="Name of the model to use",
-                default="claude-3-opus-20240229",
+                default="llama3.2",
                 required=True,
                 scope=ConfigScope.BOTH,
             )
@@ -361,39 +354,55 @@ class ConfigWizard:
                     else field.choices[0]
                 ),
             )
-        elif field.field_type == bool:
+        elif isinstance(field.field_type, type) and field.field_type is bool:
             # For boolean fields, use a confirmation
-            value = Confirm.ask(
-                "Enable?", default=bool(default) if default is not None else False
+            prompt_default = (
+                str(bool(default)).lower() if default is not None else "false"
             )
+            value_str = Prompt.ask(
+                "Enable? (true/false)",
+                choices=["true", "false"],
+                default=prompt_default,
+            )
+            value = value_str.lower()  # keep as str for type consistency
         elif field.field_type in [int, float]:
             # For numeric fields, parse the input
+            prompt_default = str(display_default) if display_default is not None else ""
             prompt_value = Prompt.ask(
                 "Enter value",
-                default=str(display_default) if display_default is not None else "",
+                default=prompt_default,
             )
             try:
-                value = field.field_type(prompt_value)
-            except ValueError:
+                value = str(field.field_type(prompt_value))
+            except (ValueError, TypeError):
                 self.console.print("[red]Invalid numeric value, using default.[/]")
-                value = default
+                value = str(default)
         else:
             # For string fields and others
+            prompt_default = str(display_default) if display_default is not None else ""
+            if isinstance(prompt_default, bool):
+                prompt_default = str(prompt_default)
             value = Prompt.ask(
                 "Enter value",
-                default=str(display_default) if display_default is not None else "",
+                default=prompt_default,
             )
-
-            # Special handling for list fields that are input as comma-separated values
-            if field.path == "processing.exclude_patterns" and value:
-                value = [v.strip() for v in value.split(",")]
 
         # Validate if needed
         if field.validator and value is not None:
-            valid, message = field.validator(value)
+            result = field.validator(value)
+            if isinstance(result, tuple):
+                valid, message = result
+            else:
+                valid, message = bool(result), ""
             if not valid:
                 self.console.print(f"[red]{message}, using default.[/]")
-                value = default
+                value = str(default)
+
+        # Always return a string for value
+        if isinstance(value, list):
+            value = ", ".join(map(str, value))
+        elif not isinstance(value, str):
+            value = str(value)
 
         return value
 
@@ -409,8 +418,23 @@ class ConfigWizard:
         """
         parts = field.path.split(".")
 
+        # Convert exclude_patterns to list if needed
+        if field.path == "processing.exclude_patterns" and isinstance(value, str):
+            value = [v.strip() for v in value.split(",") if v.strip()]
+
+        # Convert boolean string to bool if needed
+        if field.field_type is bool and isinstance(value, str):
+            value = value.lower() == "true"
+
+        # Convert to int/float if needed
+        if field.field_type in [int, float] and isinstance(value, str):
+            try:
+                value = field.field_type(value)
+            except (ValueError, TypeError):
+                pass
+
         # Create nested update dictionary
-        update_dict = {}
+        update_dict: Dict[str, Any] = {}
         current = update_dict
 
         for i, part in enumerate(parts):

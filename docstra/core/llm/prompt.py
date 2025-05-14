@@ -12,7 +12,7 @@ from typing import Any, Dict, List, Optional, Union
 class PromptTemplate:
     """Template for formatting prompts for LLM interactions."""
 
-    def __init__(self, template: str):
+    def __init__(self, template: str) -> None:
         """Initialize the prompt template.
 
         Args:
@@ -20,7 +20,7 @@ class PromptTemplate:
         """
         self.template = template
 
-    def format(self, **kwargs) -> str:
+    def format(self, **kwargs: Any) -> str:
         """Format the template with provided values.
 
         Args:
@@ -103,7 +103,7 @@ Provide the example in {language} and explain key aspects of how it works.
 """,
     }
 
-    def __init__(self, custom_templates: Optional[Dict[str, str]] = None):
+    def __init__(self, custom_templates: Optional[Dict[str, str]] = None) -> None:
         """Initialize the prompt builder.
 
         Args:
@@ -198,7 +198,7 @@ Provide the example in {language} and explain key aspects of how it works.
             request=request, language=language, additional_context=additional_context
         )
 
-    def build_custom_prompt(self, template_name: str, **kwargs) -> str:
+    def build_custom_prompt(self, template_name: str, **kwargs: Any) -> str:
         """Build a prompt using a custom template.
 
         Args:

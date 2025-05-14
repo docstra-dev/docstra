@@ -6,7 +6,7 @@ Repository mapping for understanding codebase structure.
 from __future__ import annotations
 
 import os
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional, Union, cast
 
 from docstra.core.document_processing.document import Document
 from docstra.core.indexing.code_index import CodebaseIndex
@@ -40,8 +40,8 @@ class FileNode:
         self.contributors: List[str] = []
         self.tags: List[str] = []
 
-        # Analysis results
-        self.analysis = {
+        # Analysis results with explicit types
+        self.analysis: Dict[str, Any] = {
             "complexity_metrics": {},
             "code_quality": {},
             "documentation_coverage": None,
@@ -163,6 +163,7 @@ class DirectoryNode:
         if dir_name in self.children and isinstance(
             self.children[dir_name], DirectoryNode
         ):
+            # Type is guaranteed by isinstance check
             return self.children[dir_name]
 
         return self.add_directory(dir_path)
@@ -208,7 +209,7 @@ class RepositoryMap:
         ]
 
         # Enhanced metadata
-        self.module_categories = {
+        self.module_categories: Dict[str, List[str]] = {
             "core": ["core", "src", "lib", "main"],
             "api": ["api", "rest", "graphql", "endpoints"],
             "models": ["models", "schemas", "entities"],
@@ -219,8 +220,8 @@ class RepositoryMap:
             "docs": ["docs", "documentation"],
         }
 
-        # Codebase statistics
-        self.stats = {
+        # Codebase statistics with explicit types
+        self.stats: Dict[str, Any] = {
             "total_files": 0,
             "total_lines": 0,
             "languages": {},
@@ -228,6 +229,20 @@ class RepositoryMap:
             "dependencies": {},
             "complexity": {},
         }
+
+    def should_exclude(self, path: str) -> bool:
+        """Check if a path should be excluded based on exclude patterns.
+
+        Args:
+            path: Path to check
+
+        Returns:
+            True if the path should be excluded, False otherwise
+        """
+        for pattern in self.exclude_patterns:
+            if pattern in path:
+                return True
+        return False
 
     def _categorize_module(self, path: str) -> str:
         """Categorize a module based on its path and contents.
@@ -276,11 +291,16 @@ class RepositoryMap:
                 # Track file dependencies
                 deps = self.get_file_dependencies(node.path)
                 if deps:
-                    self.stats["dependencies"][node.path] = deps
+                    # Use type cast to ensure proper typing
+                    dependencies_dict = cast(
+                        Dict[str, List[str]], self.stats["dependencies"]
+                    )
+                    dependencies_dict[node.path] = deps
 
                     # Calculate complexity based on dependencies and symbols
                     complexity = len(deps) + len(node.symbols)
-                    self.stats["complexity"][node.path] = complexity
+                    complexity_dict = cast(Dict[str, int], self.stats["complexity"])
+                    complexity_dict[node.path] = complexity
 
             elif isinstance(node, DirectoryNode):
                 # Recursively analyze child nodes
@@ -295,23 +315,27 @@ class RepositoryMap:
         def analyze_node(node: Union[FileNode, DirectoryNode]) -> None:
             if isinstance(node, FileNode):
                 # Update file statistics
-                self.stats["total_files"] += 1
+                self.stats["total_files"] = cast(int, self.stats["total_files"]) + 1
 
                 # Track language statistics
                 if node.language:
-                    self.stats["languages"][node.language] = (
-                        self.stats["languages"].get(node.language, 0) + 1
+                    languages_dict = cast(Dict[str, int], self.stats["languages"])
+                    languages_dict[node.language] = (
+                        languages_dict.get(node.language, 0) + 1
                     )
 
                 # Track module sizes
                 module_category = self._categorize_module(node.path)
-                self.stats["module_sizes"][module_category] = (
-                    self.stats["module_sizes"].get(module_category, 0) + 1
+                module_sizes_dict = cast(Dict[str, int], self.stats["module_sizes"])
+                module_sizes_dict[module_category] = (
+                    module_sizes_dict.get(module_category, 0) + 1
                 )
 
                 # Count lines if available
-                if hasattr(node, "line_count"):
-                    self.stats["total_lines"] += node.line_count
+                if node.line_count is not None:
+                    self.stats["total_lines"] = (
+                        cast(int, self.stats["total_lines"]) + node.line_count
+                    )
 
             elif isinstance(node, DirectoryNode):
                 # Recursively analyze child nodes
@@ -421,26 +445,34 @@ class RepositoryMap:
                 node.analyze(self.index)
 
                 # Update repository statistics
-                if node.line_count:
-                    self.stats["total_lines"] += node.line_count
+                if node.line_count is not None:
+                    self.stats["total_lines"] = (
+                        cast(int, self.stats["total_lines"]) + node.line_count
+                    )
 
                 if node.language:
-                    self.stats["languages"][node.language] = (
-                        self.stats["languages"].get(node.language, 0) + 1
+                    languages_dict = cast(Dict[str, int], self.stats["languages"])
+                    languages_dict[node.language] = (
+                        languages_dict.get(node.language, 0) + 1
                     )
 
                 if node.category:
-                    self.stats["module_sizes"][node.category] = (
-                        self.stats["module_sizes"].get(node.category, 0) + 1
+                    module_sizes_dict = cast(Dict[str, int], self.stats["module_sizes"])
+                    module_sizes_dict[node.category] = (
+                        module_sizes_dict.get(node.category, 0) + 1
                     )
 
                 # Update complexity metrics
-                if node.complexity:
-                    self.stats["complexity"][node.path] = node.complexity
+                if node.complexity is not None:
+                    complexity_dict = cast(Dict[str, int], self.stats["complexity"])
+                    complexity_dict[node.path] = node.complexity
 
                 # Update dependency information
                 if node.dependencies:
-                    self.stats["dependencies"][node.path] = node.dependencies
+                    dependencies_dict = cast(
+                        Dict[str, List[str]], self.stats["dependencies"]
+                    )
+                    dependencies_dict[node.path] = node.dependencies
 
             elif isinstance(node, DirectoryNode):
                 # Recursively enhance child nodes
@@ -471,7 +503,7 @@ class RepositoryMap:
         current = self.root
 
         # Navigate to parent directory
-        for i, part in enumerate(parts[:-1]):
+        for _i, part in enumerate(parts[:-1]):
             if part in current.children and isinstance(
                 current.children[part], DirectoryNode
             ):
@@ -661,12 +693,11 @@ class RepositoryMap:
             current = repo_map.root
 
             # Create directories
-            for i, part in enumerate(parts[:-1]):
+            for i, _part in enumerate(parts[:-1]):
                 dir_path = os.path.join(root_path, *parts[: i + 1])
                 current = current.get_or_create_directory(dir_path)
 
             # Add file
-            file_name = parts[-1]
             file_node = current.add_file(file_path, str(document.metadata.language))
 
             # Add metadata
