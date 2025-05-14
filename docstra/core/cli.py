@@ -51,6 +51,9 @@ from docstra.core.services.chat_service import ChatService
 from docstra.core.services.documentation_service import DocumentationService
 from docstra.core.services.config_service import ConfigService
 from docstra.core.tracking.llm_tracker import LLMTracker
+from urllib.parse import quote
+import re
+from pathlib import Path
 
 
 def serve_documentation(docs_dir: str, port: int = 8000) -> None:
@@ -959,6 +962,68 @@ def ingest(
         raise typer.Exit(code=1)
 
 
+def format_file_link(abs_path: str, start_line, end_line) -> str:
+    """Format a link with line numbers for Rich clickable links."""
+    file_url = f"{quote(abs_path)}"
+    output = f"{file_url}"
+    if start_line != "?" and end_line != "?":
+        output += f":{start_line}"
+        if start_line == end_line:
+            output += f" (#L{start_line})"
+        elif start_line < end_line:
+            output += f" (#L{start_line}-L{end_line})"
+    
+    return f"[cyan]{output}[/cyan]"
+
+
+def postprocess_llm_output_with_links(answer: str, sources: list) -> str:
+    """
+    Postprocess the LLM output to replace file/method/class references with clickable Rich links if possible.
+    This scans for file references in the answer and replaces them with [link=...]...[/link] using the sources' metadata.
+    """
+    # Build a mapping from file/method/class names to file links
+    file_links = {}
+    for source in sources:
+        meta = source.get("metadata", {})
+        filepath = meta.get("document_id", "")
+        start_line = meta.get("start_line", "?")
+        end_line = meta.get("end_line", "?")
+        try:
+            abs_path = str(Path(filepath).resolve())
+        except Exception:
+            abs_path = filepath
+        display = abs_path
+        if start_line != "?" and end_line != "?":
+            if start_line == end_line:
+                display = f"{abs_path}:{start_line}"
+            else:
+                display = f"{abs_path}:{start_line}-{end_line}"
+        file_url = format_file_link(abs_path, start_line, end_line)
+        # Add by filename
+        file_links[os.path.basename(abs_path)] = (file_url, display)
+        # Add by full path
+        file_links[abs_path] = (file_url, display)
+        # Add by method/class name if available
+        for key in ("symbol", "function", "class"):
+            if key in meta:
+                file_links[meta[key]] = (file_url, display)
+
+    # Regex to find file references (filenames, file.py:123, etc.)
+    file_ref_pattern = re.compile(r"([\w\-/]+\.py(?::\d+(?:-\d+)?)?)")
+
+    def replacer(match):
+        ref = match.group(1)
+        # Try to find a link for this reference
+        for key, (url, display) in file_links.items():
+            if ref == key or ref in display or ref in key:
+                return f"[link={url}][cyan]{ref}[/cyan][/link]"
+        return ref  # No link found
+
+    # Replace file references in the answer
+    processed = file_ref_pattern.sub(replacer, answer)
+    return processed
+
+
 # Add query command - refactored from ask
 @app.command()
 def query(
@@ -989,13 +1054,15 @@ def query(
         question=question, codebase_path_str=codebase_path, n_results=n_results
     )
 
+    # Postprocess the answer to add clickable links
+    processed_answer = postprocess_llm_output_with_links(str(answer), sources)
+
     # Display the answer
-    console.print(Panel(Markdown(str(answer)), title="Answer"))
+    console.print(Panel(Markdown(processed_answer), title="Answer"))
 
     # Show sources if available
     if sources:
         console.print("\n[bold]Sources:[/]")
-        from pathlib import Path
         for i, source in enumerate(sources[:5]):
             meta = source.get("metadata", {})
             filepath = meta.get("document_id", "Unknown")
@@ -1005,14 +1072,8 @@ def query(
                 abs_path = str(Path(filepath).resolve())
             except Exception:
                 abs_path = filepath
-            if start_line != "?" and end_line != "?":
-                if start_line == end_line:
-                    link = f"{abs_path}:{start_line}"
-                else:
-                    link = f"{abs_path}:{start_line}-{end_line}"
-            else:
-                link = abs_path
-            console.print(f"[bold]{i + 1}.[/] [cyan]{link}[/]")
+            link_str = format_file_link(abs_path, start_line, end_line)
+            console.print(f"[bold]{i + 1}.[/] {link_str}")
 
     # Display token usage statistics if tracking is enabled
     if llm_tracker and llm_tracker.last_usage:
