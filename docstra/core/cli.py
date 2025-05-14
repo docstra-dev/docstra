@@ -995,13 +995,24 @@ def query(
     # Show sources if available
     if sources:
         console.print("\n[bold]Sources:[/]")
+        from pathlib import Path
         for i, source in enumerate(sources[:5]):
-            filepath = source.get("document_id", "Unknown")
-            start_line = source.get("start_line", "?")
-            end_line = source.get("end_line", "?")
-            console.print(
-                f"[bold]{i + 1}.[/] [cyan]{filepath}[/] (lines {start_line}-{end_line})"
-            )
+            meta = source.get("metadata", {})
+            filepath = meta.get("document_id", "Unknown")
+            start_line = meta.get("start_line", "?")
+            end_line = meta.get("end_line", "?")
+            try:
+                abs_path = str(Path(filepath).resolve())
+            except Exception:
+                abs_path = filepath
+            if start_line != "?" and end_line != "?":
+                if start_line == end_line:
+                    link = f"{abs_path}:{start_line}"
+                else:
+                    link = f"{abs_path}:{start_line}-{end_line}"
+            else:
+                link = abs_path
+            console.print(f"[bold]{i + 1}.[/] [cyan]{link}[/]")
 
     # Display token usage statistics if tracking is enabled
     if llm_tracker and llm_tracker.last_usage:
