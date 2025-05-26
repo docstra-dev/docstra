@@ -10,6 +10,7 @@ from rich.console import Console
 from rich.panel import Panel
 
 from docstra.core.config.settings import ConfigManager, UserConfig
+from docstra.core.utils.language_detector import LanguageDetector
 
 # It's good practice to alias imports if they might clash or for clarity
 from docstra.core.config.wizard import run_init_wizard as run_config_wizard
@@ -118,37 +119,31 @@ class InitializationService:
 
         # Define and write .docstraignore file within the persist_directory
         docstraignore_path = persist_directory / ".docstraignore"
-        # Default ignore patterns
-        default_ignore_patterns = [
-            "node_modules/",
-            ".git/",
-            "__pycache__/",
-            "build/",
-            "dist/",
-            "venv/",
-            ".venv/",
-            ".vscode/",
-            ".idea/",
-            ".env",
-            "*.log",
-            "*.lock",
-            "package-lock.json",
-            "yarn.lock",
-            "pnpm-lock.yaml",
-            "Gemfile.lock",
-            "docs/",
-            "site/",
-            "_build/",
-            "_site/",
-            "book/",
-            "public/",
-        ]
+        
+        # Use intelligent language detection to generate appropriate ignore patterns
+        self.console.print("[cyan]Analyzing codebase structure...[/]")
+        detector = LanguageDetector(str(abs_codebase_path))
+        detection_summary = detector.get_detection_summary()
+        
+        # Show detection results to user
+        self.console.print(f"[green]Detected primary language:[/] {detection_summary['primary_language']}")
+        if detection_summary['languages']:
+            languages_str = ", ".join([f"{lang} ({count} files)" for lang, count in detection_summary['languages'].items()])
+            self.console.print(f"[green]Languages found:[/] {languages_str}")
+        if detection_summary['frameworks']:
+            frameworks_str = ", ".join(detection_summary['frameworks'])
+            self.console.print(f"[green]Frameworks detected:[/] {frameworks_str}")
+        self.console.print(f"[green]Codebase type:[/] {detection_summary['codebase_type']}")
+        
+        # Get intelligent ignore patterns
+        intelligent_patterns = detector.generate_ignore_patterns()
+        
         # Merge with user-supplied patterns (if any)
         user_patterns = initial_exclude_patterns if initial_exclude_patterns else []
-        # Deduplicate, preserve order: user patterns first, then defaults not already present
+        # Deduplicate, preserve order: user patterns first, then intelligent patterns not already present
         seen = set()
         merged_patterns = []
-        for pat in user_patterns + default_ignore_patterns:
+        for pat in user_patterns + intelligent_patterns:
             if pat and pat not in seen:
                 merged_patterns.append(pat)
                 seen.add(pat)
@@ -156,7 +151,13 @@ class InitializationService:
             "# Patterns to exclude from ALL docstra operations\n"
             "# These patterns are applied universally before any command-specific rules.\n"
             "# Use .gitignore syntax.\n"
-            "# Add directories or files to ignore, one per line.\n\n"
+            "# Add directories or files to ignore, one per line.\n"
+            "#\n"
+            f"# Auto-generated for {detection_summary['codebase_type']} project\n"
+            f"# Primary language: {detection_summary['primary_language']}\n"
+            f"# Detected frameworks: {', '.join(detection_summary['frameworks']) if detection_summary['frameworks'] else 'none'}\n"
+            f"# Total patterns: {len(merged_patterns)}\n"
+            "#\n\n"
             + "\n".join(merged_patterns)
             + "\n"
         )

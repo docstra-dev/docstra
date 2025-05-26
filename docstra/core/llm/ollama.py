@@ -24,6 +24,7 @@ class OllamaClient:
         api_base: str = "http://localhost:11434",
         max_tokens: int = 2000,
         temperature: float = 0.7,
+        validate_connection: bool = True,
     ):
         """Initialize the Ollama client.
 
@@ -32,6 +33,7 @@ class OllamaClient:
             api_base: Base URL for the Ollama API
             max_tokens: Maximum number of tokens to generate
             temperature: Temperature for generation (0.0 to 1.0)
+            validate_connection: Whether to validate connection during initialization
         """
         self.model_name = model_name
         self.api_base = api_base
@@ -43,12 +45,18 @@ class OllamaClient:
 
         # Check if Ollama is running, but don't fail hard if it's not
         self.connected = False
-        try:
-            self._check_ollama()
-            self.connected = True
-        except ConnectionError as e:
-            print(f"Warning: Could not connect to Ollama API: {e}")
-            print("The client will still be created, but generating text might fail.")
+        self.connection_error = None
+        
+        if validate_connection:
+            try:
+                self._check_ollama()
+                self.connected = True
+            except ConnectionError as e:
+                self.connection_error = str(e)
+                # Don't print warnings during initialization - let the caller handle this
+        else:
+            # Skip connection validation during initialization
+            pass
 
     def _check_ollama(self) -> None:
         """Check if Ollama is running."""
@@ -81,11 +89,9 @@ class OllamaClient:
         """
         # Check connection before generating
         if not self.connected:
-            try:
-                self._check_ollama()
-                self.connected = True
-            except ConnectionError as e:
-                return f"Error: Could not connect to Ollama API: {e}. Please make sure Ollama is running."
+            is_connected, message = self.validate_connection()
+            if not is_connected:
+                return f"Error: {message}"
 
         url = f"{self.api_base}/api/generate"
 
@@ -273,3 +279,45 @@ class OllamaClient:
             template: Template string
         """
         self.prompt_builder.add_template(name, template)
+
+    def validate_connection(self) -> tuple[bool, str]:
+        """Validate connection to Ollama and return status with helpful message.
+        
+        Returns:
+            Tuple of (is_connected, message)
+        """
+        try:
+            self._check_ollama()
+            self.connected = True
+            self.connection_error = None
+            return True, "Connected to Ollama successfully"
+        except ConnectionError as e:
+            self.connected = False
+            self.connection_error = str(e)
+            
+            # Provide helpful error message
+            if "Connection refused" in str(e):
+                message = (
+                    "Could not connect to Ollama. Please ensure Ollama is running.\n"
+                    "To start Ollama:\n"
+                    "  1. Install Ollama from https://ollama.ai\n"
+                    "  2. Run 'ollama serve' in a terminal\n"
+                    "  3. Or try a different model provider with 'docstra config --model openai' or 'docstra config --model anthropic'"
+                )
+            else:
+                message = f"Ollama connection error: {e}"
+            
+            return False, message
+
+    def get_connection_status(self) -> tuple[bool, str]:
+        """Get current connection status without attempting to reconnect.
+        
+        Returns:
+            Tuple of (is_connected, status_message)
+        """
+        if self.connected:
+            return True, "Connected to Ollama"
+        elif self.connection_error:
+            return False, f"Connection error: {self.connection_error}"
+        else:
+            return False, "Connection not tested"

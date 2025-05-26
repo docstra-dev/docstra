@@ -6,6 +6,7 @@ Service responsible for ingesting and indexing codebases.
 from pathlib import Path
 from typing import List, Optional, Any
 import shutil
+import logging
 
 from rich.console import Console
 from rich.progress import (
@@ -15,6 +16,8 @@ from rich.progress import (
     BarColumn,
     TaskProgressColumn,
 )
+from rich.panel import Panel
+from rich.table import Table
 
 from docstra.core.config.settings import UserConfig
 from docstra.core.document_processing.document import Document
@@ -130,20 +133,33 @@ class IngestionService:
             exclude_patterns=exclude_patterns or [],
         )
 
-        # Collect files
-        self.console.print(f"Collecting files from: [bold]{codebase_path_abs}[/]")
-        file_paths = collect_files(
-            base_path=str(codebase_path_abs),
-            include_dirs=include_dirs,
-            exclude_dirs=exclude_patterns,
-            file_extensions=FileCollector.default_code_file_extensions(),
-        )
+        # Collect files with suppressed logging
+        self.console.print(f"[cyan]Collecting files from:[/] [bold]{codebase_path_abs}[/]")
+        
+        # Temporarily suppress file collector logging to avoid duplication
+        file_collector_logger = logging.getLogger("docstra.file_collector")
+        original_level = file_collector_logger.level
+        file_collector_logger.setLevel(logging.WARNING)
+        
+        try:
+            file_paths = collect_files(
+                base_path=str(codebase_path_abs),
+                include_dirs=include_dirs,
+                exclude_dirs=exclude_patterns,
+                exclude_files=exclude_patterns,
+                file_extensions=FileCollector.default_code_file_extensions(),
+                log_level=logging.WARNING,  # Suppress INFO logs
+            )
+        finally:
+            # Restore original logging level
+            file_collector_logger.setLevel(original_level)
 
         if not file_paths:
             self.console.print("[yellow]No files found to ingest.[/]")
             return False
 
-        self.console.print(f"Found [bold]{len(file_paths)}[/] files to process.")
+        # Show file collection summary
+        self._show_collection_summary(file_paths, codebase_path_abs)
 
         # Process, parse, chunk, and index files
         with Progress(
@@ -159,14 +175,21 @@ class IngestionService:
             )
 
             documents: List[Document] = []
+            processing_errors = 0
             for file_path in file_paths:
                 try:
                     document = self.document_processor.process(str(file_path))
                     documents.append(document)
                 except Exception as e:
-                    self.console.print(
-                        f"[yellow]Warning:[/] Failed to process {file_path}: {str(e)}"
-                    )
+                    processing_errors += 1
+                    if processing_errors <= 3:  # Only show first few errors
+                        self.console.print(
+                            f"[yellow]Warning:[/] Failed to process {file_path}: {str(e)}"
+                        )
+                    elif processing_errors == 4:
+                        self.console.print(
+                            f"[yellow]Warning:[/] ... and {len(file_paths) - len(documents) - 3} more processing errors"
+                        )
                 progress.update(task_process, advance=1)
 
             # Parse documents
@@ -174,13 +197,16 @@ class IngestionService:
                 "[cyan]Parsing code structure...", total=len(documents)
             )
 
+            parsing_errors = 0
             for document in documents:
                 try:
                     self.code_parser.parse_document(document)
                 except Exception as e:
-                    self.console.print(
-                        f"[yellow]Warning:[/] Failed to parse {document.metadata.filepath}: {str(e)}"
-                    )
+                    parsing_errors += 1
+                    if parsing_errors <= 3:  # Only show first few errors
+                        self.console.print(
+                            f"[yellow]Warning:[/] Failed to parse {document.metadata.filepath}: {str(e)}"
+                        )
                 progress.update(task_parse, advance=1)
 
             # Chunk documents
@@ -188,13 +214,16 @@ class IngestionService:
                 "[cyan]Chunking documents...", total=len(documents)
             )
 
+            chunking_errors = 0
             for document in documents:
                 try:
                     chunking_pipeline.process(document)
                 except Exception as e:
-                    self.console.print(
-                        f"[yellow]Warning:[/] Failed to chunk {document.metadata.filepath}: {str(e)}"
-                    )
+                    chunking_errors += 1
+                    if chunking_errors <= 3:  # Only show first few errors
+                        self.console.print(
+                            f"[yellow]Warning:[/] Failed to chunk {document.metadata.filepath}: {str(e)}"
+                        )
                 progress.update(task_chunk, advance=1)
 
             # Index documents
@@ -225,9 +254,79 @@ class IngestionService:
                 task_map, completed=True, description="[green]Created repository map"
             )
 
-        self.console.print("[bold green]Ingestion complete![/]")
-        self.console.print(f"Processed and indexed {len(documents)} files")
+        # Show completion summary
+        self._show_completion_summary(
+            len(documents), processing_errors, parsing_errors, chunking_errors
+        )
+        
         return True
+
+    def _show_collection_summary(self, file_paths: List[Path], base_path: Path) -> None:
+        """Show a summary of collected files in a nice format."""
+        # Count files by directory
+        dir_counts = {}
+        for file_path in file_paths:
+            try:
+                rel_dir = str(file_path.parent.relative_to(base_path)) or "."
+                dir_counts[rel_dir] = dir_counts.get(rel_dir, 0) + 1
+            except ValueError:
+                # File not under base_path
+                continue
+
+        # Count files by extension
+        ext_counts = {}
+        for file_path in file_paths:
+            ext = file_path.suffix.lower() or "(no extension)"
+            ext_counts[ext] = ext_counts.get(ext, 0) + 1
+
+        # Create summary table
+        table = Table(title="File Collection Summary", show_header=True, header_style="bold cyan")
+        table.add_column("Metric", style="cyan")
+        table.add_column("Count", justify="right", style="green")
+        
+        table.add_row("Total files found", str(len(file_paths)))
+        
+        # Show top directories
+        if dir_counts:
+            top_dirs = sorted(dir_counts.items(), key=lambda x: x[1], reverse=True)[:5]
+            table.add_row("", "")  # Empty row for spacing
+            table.add_row("[bold]Top directories:", "")
+            for dir_name, count in top_dirs:
+                display_name = dir_name if dir_name != "." else "(root)"
+                table.add_row(f"  {display_name}", str(count))
+        
+        # Show file types
+        if ext_counts:
+            top_exts = sorted(ext_counts.items(), key=lambda x: x[1], reverse=True)[:5]
+            table.add_row("", "")  # Empty row for spacing
+            table.add_row("[bold]File types:", "")
+            for ext, count in top_exts:
+                table.add_row(f"  {ext}", str(count))
+
+        self.console.print(table)
+
+    def _show_completion_summary(
+        self, 
+        successful_docs: int, 
+        processing_errors: int, 
+        parsing_errors: int, 
+        chunking_errors: int
+    ) -> None:
+        """Show a completion summary with statistics."""
+        # Create completion panel
+        summary_text = f"[bold green]✓ Successfully processed {successful_docs} files[/]\n"
+        
+        if processing_errors > 0:
+            summary_text += f"[yellow]⚠ {processing_errors} processing errors[/]\n"
+        if parsing_errors > 0:
+            summary_text += f"[yellow]⚠ {parsing_errors} parsing errors[/]\n"
+        if chunking_errors > 0:
+            summary_text += f"[yellow]⚠ {chunking_errors} chunking errors[/]\n"
+            
+        if processing_errors == 0 and parsing_errors == 0 and chunking_errors == 0:
+            summary_text += "[green]No errors encountered during ingestion[/]"
+        
+        self.console.print(Panel(summary_text, title="[bold green]Ingestion Complete[/]", expand=False))
 
     def _resolve_persist_directory(
         self, codebase_path: Path, persist_directory_name: str

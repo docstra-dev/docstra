@@ -125,6 +125,7 @@ class docstraant:
                 api_base=self.config.model.api_base or "http://localhost:11434",
                 max_tokens=self.config.model.max_tokens,
                 temperature=self.config.model.temperature,
+                validate_connection=False,  # Don't validate during initialization
             )
         elif provider == ModelProvider.LOCAL:
             self.llm_client = LocalModelClient(

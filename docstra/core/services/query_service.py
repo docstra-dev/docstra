@@ -52,7 +52,7 @@ def _get_llm_client_for_service(
             api_base=config.model.api_base or "http://localhost:11434",
             max_tokens=config.model.max_tokens,
             temperature=config.model.temperature,
-            # callbacks parameter removed
+            validate_connection=False,  # Don't validate during service creation
         )
     elif provider == ModelProvider.LOCAL:
         # Local client may not support callbacks either

@@ -369,12 +369,21 @@ class CodebaseIndexer:
         self.exclude_patterns = exclude_patterns or [
             ".git",
             "__pycache__",
+            ".mypy_cache",
+            ".ruff_cache",
+            ".pytest_cache",
+            ".coverage",
+            ".tox",
+            ".nox",
             "node_modules",
             "venv",
+            ".venv",
+            "env",
             ".env",
             ".vscode",
             ".idea",
-            ".pytest_cache",
+            "build",
+            "dist",
         ]
 
     def should_exclude(self, path: str) -> bool:

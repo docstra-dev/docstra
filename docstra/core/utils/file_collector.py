@@ -627,8 +627,13 @@ class FileCollector:
             "dist",
             "build",
             "__pycache__",
+            ".mypy_cache",
+            ".ruff_cache",
+            ".pytest_cache",
             ".git",
             "venv",
+            ".venv",
+            "env",
         ]
         for pattern in problem_patterns:
             # Check if any directories with this pattern have files
@@ -670,21 +675,16 @@ def collect_files(
                 f"Could not read .docstraignore file {dot_docstra_ignore_path}: {e}"
             )
 
-    # Separate patterns into directory and file exclusions for universal ignores
-    universal_exclude_dirs = []
-    universal_exclude_files = []
-
-    for pattern in gitignore_patterns:
-        if pattern.endswith("/"):
-            universal_exclude_dirs.append(pattern)
-        else:
-            universal_exclude_files.append(pattern)
+    # Merge universal patterns with command-specific patterns
+    # Don't separate them - let GitIgnoreMatcher handle both directory and file patterns
+    all_exclude_dirs = (exclude_dirs or []) + gitignore_patterns
+    all_exclude_files = (exclude_files or []) + gitignore_patterns
 
     collector = FileCollector(
         base_path=base_path,
         include_dirs=include_dirs,
-        exclude_dirs=universal_exclude_dirs,
-        exclude_files=universal_exclude_files,
+        exclude_dirs=all_exclude_dirs,
+        exclude_files=all_exclude_files,
         file_extensions=file_extensions,
         log_level=log_level,
     )

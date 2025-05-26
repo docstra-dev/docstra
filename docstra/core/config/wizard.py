@@ -146,6 +146,7 @@ class ConfigWizard:
                 default=ModelProvider.OLLAMA.value,
                 required=True,
                 scope=ConfigScope.BOTH,
+                validator=validate_model_provider,
             )
         )
 
@@ -282,7 +283,7 @@ class ConfigWizard:
                 name="Exclude Patterns",
                 path="processing.exclude_patterns",
                 description="Patterns to exclude from processing (comma-separated)",
-                default=".git,__pycache__,node_modules,venv,.env,.vscode,.idea,.pytest_cache",
+                default=".git,__pycache__,.mypy_cache,.ruff_cache,.pytest_cache,node_modules,venv,.venv,env,.env,.vscode,.idea,build,dist",
                 scope=ConfigScope.LOCAL,
             )
         )
@@ -394,9 +395,29 @@ class ConfigWizard:
                 valid, message = result
             else:
                 valid, message = bool(result), ""
+            
             if not valid:
-                self.console.print(f"[red]{message}, using default.[/]")
+                self.console.print(f"[red]Validation failed: {message}[/]")
+                
+                # For model provider, offer alternatives
+                if field.path == "model.provider":
+                    self.console.print("\n[yellow]Available alternatives:[/]")
+                    self.console.print("  - [cyan]anthropic[/] (requires API key)")
+                    self.console.print("  - [cyan]openai[/] (requires API key)")
+                    self.console.print("  - [cyan]local[/] (requires local model)")
+                    
+                    retry = Confirm.ask("Would you like to choose a different provider?", default=True)
+                    if retry:
+                        return self._prompt_for_field(field, scope)
+                
+                self.console.print(f"[yellow]Using default value: {default}[/]")
                 value = str(default)
+            else:
+                # Show validation message (could be success or warning)
+                if "Warning:" in message:
+                    self.console.print(f"[yellow]{message}[/]")
+                else:
+                    self.console.print(f"[green]{message}[/]")
 
         # Always return a string for value
         if isinstance(value, list):
@@ -643,10 +664,10 @@ class ConfigWizard:
 
         # Suggest next steps
         self.console.print("\n[bold]Next steps:[/]")
-        self.console.print("- Use 'docstra init .' to index your codebase")
+        self.console.print("- Use 'docstra ingest .' to index your codebase")
         self.console.print("- Use 'docstra generate .' to generate documentation")
         self.console.print(
-            "- Use 'docstra ask \"How does this work?\"' to query your codebase"
+            "- Use 'docstra query \"How does this work?\"' to query your codebase"
         )
 
 
@@ -688,3 +709,43 @@ def run_init_wizard(
     """
     wizard = ConfigWizard(console, config_path, local_path)
     wizard.run_init_wizard()
+
+
+def validate_model_provider(provider: str) -> Tuple[bool, str]:
+    """Validate that the selected model provider is available.
+    
+    Args:
+        provider: The model provider to validate
+        
+    Returns:
+        Tuple of (is_valid, message)
+    """
+    from docstra.core.config.settings import ModelProvider
+    
+    try:
+        provider_enum = ModelProvider(provider.lower())
+    except ValueError:
+        return False, f"Invalid provider: {provider}"
+    
+    if provider_enum == ModelProvider.OLLAMA:
+        # Check if Ollama is available, but don't fail hard
+        try:
+            from docstra.core.llm.ollama import OllamaClient
+            client = OllamaClient(validate_connection=True)
+            if client.connected:
+                return True, "Ollama is available and ready"
+            else:
+                # Allow selection but warn user
+                return True, (
+                    "Ollama selected (Warning: Ollama server not currently running. "
+                    "Start with 'ollama serve' before using docstra commands)"
+                )
+        except Exception as e:
+            # Allow selection but warn user
+            return True, (
+                f"Ollama selected (Warning: Could not verify Ollama connection: {e}. "
+                "Ensure Ollama is installed and running before using docstra commands)"
+            )
+    
+    # For other providers, we assume they're valid (API keys will be validated later)
+    return True, f"{provider_enum.value} provider selected"

@@ -44,7 +44,6 @@ def _get_llm_client_for_chat_service(
             api_key=config.model.api_key,
             max_tokens=config.model.max_tokens,
             temperature=config.model.temperature,
-            callbacks=callbacks,
         )
     elif provider == ModelProvider.OPENAI:
         return OpenAIClient(
@@ -52,7 +51,6 @@ def _get_llm_client_for_chat_service(
             api_key=config.model.api_key,
             max_tokens=config.model.max_tokens,
             temperature=config.model.temperature,
-            callbacks=callbacks,
         )
     elif provider == ModelProvider.OLLAMA:
         return OllamaClient(
@@ -60,7 +58,7 @@ def _get_llm_client_for_chat_service(
             api_base=config.model.api_base or "http://localhost:11434",
             max_tokens=config.model.max_tokens,
             temperature=config.model.temperature,
-            # callbacks removed
+            validate_connection=False,  # Don't validate during service creation
         )
     elif provider == ModelProvider.LOCAL:
         return LocalModelClient(

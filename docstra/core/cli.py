@@ -13,6 +13,7 @@ from typing import List, Optional, Union, Dict, Any, cast
 import typer
 from rich.console import Console
 from rich.markdown import Markdown
+from rich.prompt import Confirm
 from rich.panel import Panel
 from rich.progress import (
     Progress,
@@ -51,6 +52,7 @@ from docstra.core.services.chat_service import ChatService
 from docstra.core.services.documentation_service import DocumentationService
 from docstra.core.services.config_service import ConfigService
 from docstra.core.tracking.llm_tracker import LLMTracker
+from docstra.core.utils.language_detector import LanguageDetector
 from urllib.parse import quote
 import re
 from pathlib import Path
@@ -196,6 +198,7 @@ def get_llm_client(
             api_base=config.model.api_base or "http://localhost:11434",
             max_tokens=config.model.max_tokens,
             temperature=config.model.temperature,
+            validate_connection=False,  # Don't validate during CLI operations
         )
     elif provider == ModelProvider.LOCAL:
         return LocalModelClient(
@@ -284,7 +287,7 @@ def init(
     console.print("[yellow]To ingest and index your codebase, run:[/] [bold]docstra ingest[/]")
 
     # Optionally prompt to run ingestion now
-    if typer.confirm("Would you like to ingest and index your codebase now?", default=False):
+    if Confirm.ask("Would you like to ingest and index your codebase now?", default=False):
         ingest(
             codebase_path=abs_codebase_path,
             config_path=config_path,
@@ -873,39 +876,49 @@ def load_or_init_config(config_path: Optional[str] = None) -> UserConfig:
         raise typer.Exit(code=1)
 
 
-# Initialize services with proper parameters
+def get_llm_tracker() -> Optional[LLMTracker]:
+    """Get LLM tracker instance, creating it if needed."""
+    try:
+        return LLMTracker()
+    except Exception as e:
+        console.print(f"[yellow]Warning: Failed to initialize LLM tracking: {e}[/]")
+        return None
+
+
+def create_services_for_config(user_config: UserConfig) -> tuple:
+    """Create service instances for the given configuration.
+    
+    Returns:
+        Tuple of (ingestion_service, query_service, chat_service, documentation_service)
+    """
+    llm_tracker = get_llm_tracker()
+    callbacks = [llm_tracker] if llm_tracker else None
+    
+    ingestion_service = IngestionService(
+        console=console, callbacks=callbacks
+    )
+    query_service = QueryService(
+        user_config=user_config,
+        console=console,
+        callbacks=callbacks,
+    )
+    chat_service = ChatService(
+        user_config=user_config,
+        console=console,
+        callbacks=callbacks,
+    )
+    documentation_service = DocumentationService(
+        user_config=user_config,
+        console=console,
+        callbacks=callbacks,
+    )
+    
+    return ingestion_service, query_service, chat_service, documentation_service
+
+
+# Initialize non-LLM services that don't require configuration
 config_service = ConfigService(console=console)
 init_service = InitializationService(console=console)
-
-# Initialize LLM tracker - this should be made available to all LLM-using services
-llm_tracker = None
-try:
-    llm_tracker = LLMTracker()
-except Exception as e:
-    console.print(f"[yellow]Warning: Failed to initialize LLM tracking: {e}[/]")
-
-# We need a default config for the services until a specific one is loaded
-default_config = load_or_init_config()
-
-ingestion_service = IngestionService(
-    console=console, callbacks=[llm_tracker] if llm_tracker else None
-)
-query_service = QueryService(
-    user_config=default_config,
-    console=console,
-    callbacks=[llm_tracker] if llm_tracker else None,
-)
-chat_service = ChatService(
-    user_config=default_config,
-    console=console,
-    callbacks=[llm_tracker] if llm_tracker else None,
-)
-documentation_service = DocumentationService(
-    user_config=default_config,
-    console=console,
-    callbacks=[llm_tracker] if llm_tracker else None,
-)
-
 
 # Add ingest command - separate from init according to refactoring plan
 @app.command()
@@ -925,6 +938,10 @@ def ingest(
     ),
 ) -> None:
     """Ingest and index a codebase for querying and documentation."""
+    # Show initial information
+    abs_codebase_path = Path(codebase_path).resolve()
+    console.print(Panel(f"[bold]Ingesting codebase:[/] {abs_codebase_path}", expand=False))
+    
     user_config = load_or_init_config(config_path)
 
     # Update config with command-line overrides
@@ -944,14 +961,27 @@ def ingest(
         # Update exclude patterns
         if exclude:
             updated_config.ingestion.exclude_patterns = exclude
+            console.print(f"[dim]Using exclude patterns:[/] {', '.join(exclude)}")
 
         # Update include dirs
         if include:
             updated_config.ingestion.include_dirs = include
+            console.print(f"[dim]Using include directories:[/] {', '.join(include)}")
 
         # Use the updated config
         user_config = updated_config
 
+    # Show configuration info
+    console.print(f"[dim]Model:[/] {user_config.model.provider} - {user_config.model.model_name}")
+    console.print(f"[dim]Embedding:[/] {user_config.embedding.provider} - {user_config.embedding.model_name}")
+    console.print(f"[dim]Storage:[/] {user_config.storage.persist_directory}")
+    
+    if force:
+        console.print("[yellow]Force mode enabled - will reindex existing data[/]")
+
+    # Create ingestion service for this operation
+    ingestion_service, _, _, _ = create_services_for_config(user_config)
+    
     # Run ingestion using the service
     success = ingestion_service.ingest_codebase(
         codebase_path=codebase_path, user_config=user_config, force=force
@@ -960,6 +990,12 @@ def ingest(
     if not success:
         console.print("[bold red]Ingestion failed.[/]")
         raise typer.Exit(code=1)
+    
+    # Show next steps
+    console.print("\n[bold green]Ready to use![/] You can now:")
+    console.print("  • [cyan]docstra query[/] \"your question\" - Ask questions about your code")
+    console.print("  • [cyan]docstra chat[/] - Start an interactive chat session")
+    console.print("  • [cyan]docstra generate[/] - Generate comprehensive documentation")
 
 
 def format_file_link(abs_path: str, start_line, end_line) -> str:
@@ -1042,12 +1078,17 @@ def query(
     # Get configuration
     user_config = load_or_init_config(config_path)
 
-    # Execute query using the service - pass user_config to the service initialization
-    query_service_with_config = QueryService(
-        user_config=user_config,
-        console=console,
-        callbacks=[llm_tracker] if llm_tracker else None,
-    )
+    # Create query service for this operation
+    _, query_service_with_config, _, _ = create_services_for_config(user_config)
+
+    # Validate LLM connection if using Ollama
+    if user_config.model.provider == ModelProvider.OLLAMA:
+        from docstra.core.llm.ollama import OllamaClient
+        if isinstance(query_service_with_config.llm_client, OllamaClient):
+            is_connected, message = query_service_with_config.llm_client.validate_connection()
+            if not is_connected:
+                console.print(f"[bold red]Error:[/] {message}")
+                raise typer.Exit(code=1)
 
     # Call answer_question with the right parameters
     answer, sources = query_service_with_config.answer_question(
@@ -1076,6 +1117,7 @@ def query(
             console.print(f"[bold]{i + 1}.[/] {link_str}")
 
     # Display token usage statistics if tracking is enabled
+    llm_tracker = get_llm_tracker()
     if llm_tracker and llm_tracker.last_usage:
         console.print("\n[dim]LLM Usage:[/dim]")
         usage = llm_tracker.last_usage
@@ -1111,6 +1153,18 @@ def chat(
     # Get configuration
     user_config = load_or_init_config(config_path)
 
+    # Create chat service for this operation
+    _, _, chat_service, _ = create_services_for_config(user_config)
+
+    # Validate LLM connection if using Ollama
+    if user_config.model.provider == ModelProvider.OLLAMA:
+        from docstra.core.llm.ollama import OllamaClient
+        if hasattr(chat_service, 'llm_client') and isinstance(chat_service.llm_client, OllamaClient):
+            is_connected, message = chat_service.llm_client.validate_connection()
+            if not is_connected:
+                console.print(f"[bold red]Error:[/] {message}")
+                raise typer.Exit(code=1)
+
     # Handle session management options
     if list_sessions:
         sessions = chat_service.list_sessions()
@@ -1118,13 +1172,13 @@ def chat(
             console.print("[yellow]No chat sessions found.[/]")
         return
 
-    console.print("[bold]Available chat sessions:[/]")
-    for i, session in enumerate(sessions):
-        console.print(
-            f"[bold]{i + 1}.[/] [cyan]{session['name']}[/] "
-            f"(ID: {session['id']}, Last accessed: {session['last_accessed_at']})"
-        )
-    return
+        console.print("[bold]Available chat sessions:[/]")
+        for i, session in enumerate(sessions):
+            console.print(
+                f"[bold]{i + 1}.[/] [cyan]{session['name']}[/] "
+                f"(ID: {session['id']}, Last accessed: {session['last_accessed_at']})"
+            )
+        return
 
     if delete_session:
         success = chat_service.delete_session(delete_session)
@@ -1168,16 +1222,20 @@ def chat(
                 continue
 
             # Check for stats command
-            if user_input.lower() == "stats" and llm_tracker:
-                stats = llm_tracker.get_session_stats()
-                console.print("\n[bold]Session Statistics:[/]")
-                console.print(
-                    f"Total input tokens: {stats.get('total_input_tokens', 0)}"
-                )
-                console.print(
-                    f"Total output tokens: {stats.get('total_output_tokens', 0)}"
-                )
-                console.print(f"Total cost: ${stats.get('total_cost', 0):.5f}")
+            if user_input.lower() == "stats":
+                llm_tracker = get_llm_tracker()
+                if llm_tracker:
+                    stats = llm_tracker.get_session_stats()
+                    console.print("\n[bold]Session Statistics:[/]")
+                    console.print(
+                        f"Total input tokens: {stats.get('total_input_tokens', 0)}"
+                    )
+                    console.print(
+                        f"Total output tokens: {stats.get('total_output_tokens', 0)}"
+                    )
+                    console.print(f"Total cost: ${stats.get('total_cost', 0):.5f}")
+                else:
+                    console.print("\n[yellow]LLM tracking not available.[/yellow]")
                 continue
 
             # Get response from the chat service
@@ -1195,6 +1253,68 @@ def chat(
             break
         except Exception as e:
             console.print(f"\n[bold red]Error in chat: {e}[/]")
+
+
+@app.command()
+def detect(
+    codebase_path: str = typer.Argument(".", help="Path to the codebase to analyze"),
+    show_patterns: bool = typer.Option(
+        False, "--show-patterns", help="Show generated ignore patterns"
+    ),
+) -> None:
+    """Detect languages and frameworks in a codebase and show recommended ignore patterns."""
+    console.print(Panel("Codebase Language & Framework Detection", expand=False))
+    
+    # Initialize detector
+    detector = LanguageDetector(codebase_path)
+    
+    # Get detection summary
+    with console.status("[cyan]Analyzing codebase...", spinner="dots"):
+        summary = detector.get_detection_summary()
+    
+    # Display results
+    console.print(f"\n[bold]Codebase Analysis Results for:[/] {Path(codebase_path).resolve()}")
+    console.print(f"[bold]Primary Language:[/] [green]{summary['primary_language']}[/]")
+    console.print(f"[bold]Codebase Type:[/] [green]{summary['codebase_type']}[/]")
+    
+    # Show language breakdown
+    if summary['languages']:
+        console.print("\n[bold]Languages Detected:[/]")
+        for language, count in sorted(summary['languages'].items(), key=lambda x: x[1], reverse=True):
+            console.print(f"  • [cyan]{language}[/]: {count} files")
+    
+    # Show frameworks
+    if summary['frameworks']:
+        console.print("\n[bold]Frameworks/Tools Detected:[/]")
+        for framework in sorted(summary['frameworks']):
+            console.print(f"  • [yellow]{framework}[/]")
+    
+    # Show pattern count
+    console.print(f"\n[bold]Recommended Ignore Patterns:[/] {summary['total_patterns']} patterns")
+    
+    # Show patterns if requested
+    if show_patterns:
+        console.print("\n[bold]Generated Ignore Patterns:[/]")
+        for pattern in summary['ignore_patterns']:
+            console.print(f"  {pattern}")
+    else:
+        console.print("[dim]Use --show-patterns to see the full list[/]")
+    
+    # Show recommendations
+    console.print("\n[bold]Recommendations:[/]")
+    if summary['total_patterns'] < 20:
+        console.print("  • [green]Lightweight pattern set - good for performance[/]")
+    elif summary['total_patterns'] > 50:
+        console.print("  • [yellow]Large pattern set - consider reviewing for optimization[/]")
+    else:
+        console.print("  • [green]Balanced pattern set for your project type[/]")
+    
+    if summary['codebase_type'] == "web_frontend":
+        console.print("  • [blue]Consider adding framework-specific build directories to .gitignore[/]")
+    elif summary['codebase_type'] == "python":
+        console.print("  • [blue]Virtual environment directories are automatically excluded[/]")
+    elif summary['codebase_type'] == "mobile":
+        console.print("  • [blue]Platform-specific build artifacts are excluded[/]")
 
 
 if __name__ == "__main__":

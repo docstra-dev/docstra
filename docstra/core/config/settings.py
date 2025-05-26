@@ -7,6 +7,10 @@ class ModelProvider(str, Enum):
     OPENAI = "openai"
     OLLAMA = "ollama"
     LOCAL = "local"
+    
+    def __str__(self) -> str:
+        """Return the enum value instead of the full enum representation."""
+        return self.value
 
 
 class ModelConfig:

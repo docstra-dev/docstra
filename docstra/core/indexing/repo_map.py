@@ -200,12 +200,21 @@ class RepositoryMap:
         self.exclude_patterns: List[str] = [
             ".git",
             "__pycache__",
+            ".mypy_cache",
+            ".ruff_cache",
+            ".pytest_cache",
+            ".coverage",
+            ".tox",
+            ".nox",
             "node_modules",
             "venv",
+            ".venv",
+            "env",
             ".env",
             ".vscode",
             ".idea",
-            ".pytest_cache",
+            "build",
+            "dist",
         ]
 
         # Enhanced metadata
