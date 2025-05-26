@@ -22,6 +22,7 @@ from rich.progress import (
     BarColumn,
     TaskProgressColumn,
 )
+from rich.table import Table
 
 from docstra.core.config.settings import (
     ConfigManager,
@@ -51,7 +52,7 @@ from docstra.core.services.query_service import QueryService
 from docstra.core.services.chat_service import ChatService
 from docstra.core.services.documentation_service import DocumentationService
 from docstra.core.services.config_service import ConfigService
-from docstra.core.tracking.llm_tracker import LLMTracker
+from docstra.core.tracking.llm_tracker import LLMTracker, UniversalLLMTracker
 from docstra.core.utils.language_detector import LanguageDetector
 from urllib.parse import quote
 import re
@@ -876,10 +877,11 @@ def load_or_init_config(config_path: Optional[str] = None) -> UserConfig:
         raise typer.Exit(code=1)
 
 
-def get_llm_tracker() -> Optional[LLMTracker]:
+def get_llm_tracker() -> Optional[UniversalLLMTracker]:
     """Get LLM tracker instance, creating it if needed."""
     try:
-        return LLMTracker()
+        from docstra.core.tracking.llm_tracker import get_global_tracker
+        return get_global_tracker()
     except Exception as e:
         console.print(f"[yellow]Warning: Failed to initialize LLM tracking: {e}[/]")
         return None
@@ -937,7 +939,12 @@ def ingest(
         False, "--force", "-f", help="Force reindexing of the codebase"
     ),
 ) -> None:
-    """Ingest and index a codebase for querying and documentation."""
+    """Ingest and index a codebase for querying and documentation.
+    
+    This command processes your codebase files, generates embeddings, and creates
+    searchable indexes. For OpenAI embeddings, token usage and costs are tracked
+    and displayed during the process.
+    """
     # Show initial information
     abs_codebase_path = Path(codebase_path).resolve()
     console.print(Panel(f"[bold]Ingesting codebase:[/] {abs_codebase_path}", expand=False))
@@ -975,6 +982,11 @@ def ingest(
     console.print(f"[dim]Model:[/] {user_config.model.provider} - {user_config.model.model_name}")
     console.print(f"[dim]Embedding:[/] {user_config.embedding.provider} - {user_config.embedding.model_name}")
     console.print(f"[dim]Storage:[/] {user_config.storage.persist_directory}")
+    
+    # Show cost warning for OpenAI embeddings
+    if user_config.embedding.provider.lower() == "openai":
+        console.print("[yellow]⚠ Using OpenAI embeddings - API costs will apply[/]")
+        console.print("[dim]Cost estimate will be shown before processing begins[/]")
     
     if force:
         console.print("[yellow]Force mode enabled - will reindex existing data[/]")
@@ -1118,13 +1130,14 @@ def query(
 
     # Display token usage statistics if tracking is enabled
     llm_tracker = get_llm_tracker()
-    if llm_tracker and llm_tracker.last_usage:
+    if llm_tracker and llm_tracker.session_stats:
         console.print("\n[dim]LLM Usage:[/dim]")
-        usage = llm_tracker.last_usage
+        # Get the last usage from session stats
+        usage = llm_tracker.session_stats[-1]
         console.print(f"[dim]Input tokens: {usage.get('input_tokens', 'N/A')}[/dim]")
         console.print(f"[dim]Output tokens: {usage.get('output_tokens', 'N/A')}[/dim]")
-        if "cost" in usage:
-            console.print(f"[dim]Approximate cost: ${usage.get('cost', 0):.5f}[/dim]")
+        if "cost_usd" in usage:
+            console.print(f"[dim]Approximate cost: ${usage.get('cost_usd', 0):.5f}[/dim]")
 
 
 # Add chat command - new functionality per refactoring plan
@@ -1225,15 +1238,23 @@ def chat(
             if user_input.lower() == "stats":
                 llm_tracker = get_llm_tracker()
                 if llm_tracker:
-                    stats = llm_tracker.get_session_stats()
-                    console.print("\n[bold]Session Statistics:[/]")
-                    console.print(
-                        f"Total input tokens: {stats.get('total_input_tokens', 0)}"
-                    )
-                    console.print(
-                        f"Total output tokens: {stats.get('total_output_tokens', 0)}"
-                    )
-                    console.print(f"Total cost: ${stats.get('total_cost', 0):.5f}")
+                    session_summary = llm_tracker.get_session_summary()
+                    if "message" in session_summary:
+                        console.print(f"\n[yellow]{session_summary['message']}[/]")
+                    else:
+                        console.print("\n[bold]Session Statistics:[/]")
+                        session_stats = session_summary.get("session_summary", {})
+                        console.print(
+                            f"Total requests: {session_stats.get('total_requests', 0)}"
+                        )
+                        console.print(
+                            f"Total input tokens: {session_stats.get('total_input_tokens', 0)}"
+                        )
+                        console.print(
+                            f"Total output tokens: {session_stats.get('total_output_tokens', 0)}"
+                        )
+                        console.print(f"Total cost: ${session_stats.get('total_cost', 0):.5f}")
+                        console.print(f"Total duration: {session_stats.get('total_duration_ms', 0):.0f} ms")
                 else:
                     console.print("\n[yellow]LLM tracking not available.[/yellow]")
                 continue
@@ -1315,6 +1336,75 @@ def detect(
         console.print("  • [blue]Virtual environment directories are automatically excluded[/]")
     elif summary['codebase_type'] == "mobile":
         console.print("  • [blue]Platform-specific build artifacts are excluded[/]")
+
+
+@app.command()
+def usage(
+    config_path: Optional[str] = typer.Option(
+        None, "--config", "-c", help="Path to the configuration file"
+    ),
+    days: int = typer.Option(
+        30, "--days", "-d", help="Number of days to include in usage summary"
+    ),
+    detailed: bool = typer.Option(
+        False, "--detailed", help="Show detailed usage breakdown"
+    ),
+) -> None:
+    """Show LLM and embedding usage statistics and costs."""
+    console.print(Panel("Usage Statistics", expand=False))
+    
+    # Get LLM usage from tracker
+    llm_tracker = get_llm_tracker()
+    if llm_tracker:
+        # Get session summary from the new tracker
+        session_summary = llm_tracker.get_session_summary()
+        
+        if "message" in session_summary:
+            console.print(f"[yellow]{session_summary['message']}[/]")
+        else:
+            # Create LLM usage table
+            llm_table = Table(title="LLM Usage Summary", show_header=True, header_style="bold cyan")
+            llm_table.add_column("Metric", style="cyan")
+            llm_table.add_column("Value", justify="right", style="green")
+            
+            session_stats = session_summary.get("session_summary", {})
+            llm_table.add_row("Total requests", str(session_stats.get("total_requests", 0)))
+            llm_table.add_row("Input tokens", f"{session_stats.get('total_input_tokens', 0):,}")
+            llm_table.add_row("Output tokens", f"{session_stats.get('total_output_tokens', 0):,}")
+            llm_table.add_row("Total cost", f"${session_stats.get('total_cost', 0):.4f}")
+            llm_table.add_row("Total duration", f"{session_stats.get('total_duration_ms', 0):.0f} ms")
+            
+            console.print(llm_table)
+            
+            # Show breakdown by provider if detailed
+            if detailed:
+                by_provider = session_summary.get("by_provider", {})
+                
+                if by_provider:
+                    console.print("\n[bold]Breakdown by Provider:[/]")
+                    provider_table = Table(show_header=True, header_style="bold blue")
+                    provider_table.add_column("Provider", style="cyan")
+                    provider_table.add_column("Requests", justify="right")
+                    provider_table.add_column("Input Tokens", justify="right")
+                    provider_table.add_column("Output Tokens", justify="right")
+                    provider_table.add_column("Cost", justify="right", style="green")
+                    
+                    for provider, stats in sorted(by_provider.items()):
+                        provider_table.add_row(
+                            provider,
+                            str(stats.get("requests", 0)),
+                            f"{stats.get('input_tokens', 0):,}",
+                            f"{stats.get('output_tokens', 0):,}",
+                            f"${stats.get('cost', 0):.4f}"
+                        )
+                    
+                    console.print(provider_table)
+    else:
+        console.print("[yellow]LLM usage tracking not available.[/]")
+    
+    # Show embedding usage information
+    console.print("\n[dim]Note: Embedding usage during ingestion is shown at the end of the ingestion process.[/]")
+    console.print("[dim]For current session embedding costs, check the output of 'docstra ingest'.[/]")
 
 
 if __name__ == "__main__":

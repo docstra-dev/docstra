@@ -6,6 +6,7 @@ Callback handler and utilities for tracking LLM operation statistics.
 import time
 import uuid
 from typing import Any, Dict, List, Optional, Union, ClassVar
+from uuid import UUID
 from langchain_core.callbacks.base import BaseCallbackHandler
 from langchain_core.outputs import LLMResult
 import tiktoken
@@ -41,29 +42,230 @@ def _estimate_tokens(text: str, model_name: str = "gpt-3.5-turbo") -> int:
     return len(encoding.encode(text))
 
 
+class UniversalLLMTracker:
+    """
+    Universal LLM tracker that works with all providers.
+    Supports both callback-based tracking (for LangChain models) and direct tracking.
+    """
+    
+    # Enhanced pricing data with more models
+    PRICING: ClassVar[Dict[str, Dict[str, Dict[str, float]]]] = {
+        "anthropic": {
+            "claude-3-haiku": {"input": 0.25, "output": 1.25},
+            "claude-3-sonnet": {"input": 3.0, "output": 15.0},
+            "claude-3-opus": {"input": 15.0, "output": 75.0},
+            "claude-3.5-sonnet": {"input": 3.0, "output": 15.0},
+            "claude-3.5-haiku": {"input": 1.0, "output": 5.0},
+            "default": {"input": 3.0, "output": 15.0},
+        },
+        "openai": {
+            "gpt-4": {"input": 30.0, "output": 60.0},
+            "gpt-4o": {"input": 5.0, "output": 15.0},
+            "gpt-4o-mini": {"input": 0.15, "output": 0.6},
+            "gpt-3.5-turbo": {"input": 0.5, "output": 1.5},
+            "gpt-4-turbo": {"input": 10.0, "output": 30.0},
+            "default": {"input": 5.0, "output": 15.0},
+        },
+        "ollama": {
+            "default": {"input": 0.0, "output": 0.0},  # Local models have no API cost
+        },
+        "local": {
+            "default": {"input": 0.0, "output": 0.0},  # Local models have no API cost
+        },
+        "default": {"default": {"input": 1.0, "output": 2.0}},  # Conservative default
+    }
+    
+    def __init__(self, stats_file: Optional[str] = None):
+        """Initialize the universal tracker."""
+        self.stats_file = stats_file
+        if not self.stats_file:
+            self.stats_file = str(Path.home() / ".docstra" / "llm_stats.json")
+        
+        self.session_stats: List[Dict[str, Any]] = []
+        self.total_stats = {
+            "total_requests": 0,
+            "total_input_tokens": 0,
+            "total_output_tokens": 0,
+            "total_cost": 0.0,
+            "total_duration_ms": 0,
+        }
+        
+        # Load existing stats
+        self._load_stats()
+    
+    def track_llm_call(
+        self,
+        provider: str,
+        model: str,
+        input_text: str,
+        output_text: str,
+        duration_ms: float,
+        input_tokens: Optional[int] = None,
+        output_tokens: Optional[int] = None,
+        metadata: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        """
+        Track an LLM call with comprehensive metrics.
+        
+        Args:
+            provider: LLM provider (openai, anthropic, ollama, local)
+            model: Model name
+            input_text: Input prompt text
+            output_text: Generated output text
+            duration_ms: Duration in milliseconds
+            input_tokens: Actual input tokens (if available)
+            output_tokens: Actual output tokens (if available)
+            metadata: Additional metadata
+            
+        Returns:
+            Dictionary with usage statistics
+        """
+        # Estimate tokens if not provided
+        if input_tokens is None:
+            input_tokens = _estimate_tokens(input_text, model)
+        if output_tokens is None:
+            output_tokens = _estimate_tokens(output_text, model)
+        
+        # Calculate cost
+        cost = self._calculate_cost(provider, model, input_tokens, output_tokens)
+        
+        # Create usage record
+        usage_record = {
+            "call_id": str(uuid.uuid4()),
+            "timestamp": time.time(),
+            "provider": provider,
+            "model": model,
+            "input_tokens": input_tokens,
+            "output_tokens": output_tokens,
+            "total_tokens": input_tokens + output_tokens,
+            "duration_ms": duration_ms,
+            "cost_usd": cost,
+            "metadata": metadata or {},
+        }
+        
+        # Add to session stats
+        self.session_stats.append(usage_record)
+        
+        # Update totals
+        self.total_stats["total_requests"] += 1
+        self.total_stats["total_input_tokens"] += input_tokens
+        self.total_stats["total_output_tokens"] += output_tokens
+        self.total_stats["total_cost"] += cost
+        self.total_stats["total_duration_ms"] += duration_ms
+        
+        # Save stats
+        self._save_stats()
+        
+        return usage_record
+    
+    def _calculate_cost(self, provider: str, model: str, input_tokens: int, output_tokens: int) -> float:
+        """Calculate cost based on provider and model."""
+        provider_pricing = self.PRICING.get(provider.lower(), self.PRICING["default"])
+        
+        # Try to find exact model match, then fallback to default
+        model_pricing = None
+        for model_key in provider_pricing:
+            if model_key in model.lower() or model_key == "default":
+                model_pricing = provider_pricing[model_key]
+                break
+        
+        if not model_pricing:
+            model_pricing = provider_pricing.get("default", self.PRICING["default"]["default"])
+        
+        input_cost = (input_tokens / 1000) * model_pricing.get("input", 0.0)
+        output_cost = (output_tokens / 1000) * model_pricing.get("output", 0.0)
+        
+        return input_cost + output_cost
+    
+    def get_session_summary(self) -> Dict[str, Any]:
+        """Get summary of current session."""
+        if not self.session_stats:
+            return {"message": "No LLM calls tracked in this session"}
+        
+        by_provider: Dict[str, Dict[str, Any]] = {}
+        for stat in self.session_stats:
+            provider = stat["provider"]
+            if provider not in by_provider:
+                by_provider[provider] = {
+                    "requests": 0,
+                    "input_tokens": 0,
+                    "output_tokens": 0,
+                    "cost": 0.0,
+                    "avg_duration_ms": 0,
+                }
+            
+            by_provider[provider]["requests"] += 1
+            by_provider[provider]["input_tokens"] += stat["input_tokens"]
+            by_provider[provider]["output_tokens"] += stat["output_tokens"]
+            by_provider[provider]["cost"] += stat["cost_usd"]
+        
+        # Calculate averages
+        for provider_stats in by_provider.values():
+            if provider_stats["requests"] > 0:
+                total_duration = sum(s["duration_ms"] for s in self.session_stats)
+                provider_stats["avg_duration_ms"] = total_duration / len(self.session_stats)
+        
+        return {
+            "session_summary": self.total_stats,
+            "by_provider": by_provider,
+            "total_calls": len(self.session_stats),
+        }
+    
+    def _load_stats(self) -> None:
+        """Load existing stats from file."""
+        try:
+            if self.stats_file:
+                stats_path = Path(self.stats_file)
+                if stats_path.exists():
+                    with open(stats_path, 'r') as f:
+                        data = json.load(f)
+                        self.total_stats = data.get("totals", self.total_stats)
+        except Exception as e:
+            print(f"Warning: Could not load stats from {self.stats_file}: {e}")
+    
+    def _save_stats(self) -> None:
+        """Save stats to file."""
+        try:
+            if self.stats_file:
+                stats_path = Path(self.stats_file)
+                stats_path.parent.mkdir(parents=True, exist_ok=True)
+            
+            # Prepare data to save
+            data = {
+                "totals": self.total_stats,
+                "last_updated": datetime.datetime.now().isoformat(),
+                "recent_calls": self.session_stats[-50:],  # Keep last 50 calls
+            }
+            
+            with open(stats_path, 'w') as f:
+                json.dump(data, f, indent=2)
+        except Exception as e:
+            print(f"Warning: Could not save stats to {self.stats_file}: {e}")
+
+
+# Global tracker instance
+_global_tracker = UniversalLLMTracker()
+
+
+def get_global_tracker() -> UniversalLLMTracker:
+    """Get the global tracker instance."""
+    return _global_tracker
+
+
 class DocstraStatsCallbackHandler(BaseCallbackHandler):
     """
-    Callback Handler for collecting LLM operation statistics.
-
-    Collects:
-    - Latency (duration)
-    - Token counts (prompt, completion, total) - if provided by LLM/response
-    - Estimated input tokens (if not provided by LLM)
-    - Model name
-    - Cost (placeholder for future implementation)
+    Enhanced callback Handler for collecting LLM operation statistics.
+    Now integrates with UniversalLLMTracker for consistent tracking.
     """
 
-    def __init__(self):
+    def __init__(self, tracker: Optional[UniversalLLMTracker] = None):
         super().__init__()
+        self.tracker = tracker or get_global_tracker()
         self.current_call_data: Dict[str, Any] = {}
-        self.last_input_tokens = 0
-        self.last_output_tokens = 0
-        self.last_duration_ms = 0
-        self.last_cost = 0.0
 
     def on_llm_start(
-        self, serialized: Dict[str, Any], prompts: List[str], **kwargs: Any
-    ) -> None:
+        self, serialized: Dict[str, Any], prompts: List[str], *, run_id: UUID, parent_run_id: Optional[UUID] = None, tags: Optional[List[str]] = None, metadata: Optional[Dict[str, Any]] = None, **kwargs: Any
+    ) -> Any:
         """Run when LLM starts running."""
         self.current_call_data = {
             "call_id": str(uuid.uuid4()),
@@ -71,124 +273,97 @@ class DocstraStatsCallbackHandler(BaseCallbackHandler):
             "prompts": prompts,
             "model_name": serialized.get(
                 "name", serialized.get("id", ["Unknown"])[-1]
-            ),  # Try to get model name
-            "invocation_params": kwargs.get("invocation_params", {}),
-            "estimated_input_tokens": sum(
-                _estimate_tokens(
-                    p,
-                    kwargs.get("invocation_params", {}).get(
-                        "model_name", "gpt-3.5-turbo"
-                    ),
-                )
-                for p in prompts
             ),
+            "invocation_params": kwargs.get("invocation_params", {}),
         }
 
-    def on_llm_new_token(self, token: str, **kwargs: Any) -> None:
-        """Run on new LLM token. (Not typically used for aggregate stats here)"""
-        pass
-
-    def on_llm_end(self, response: LLMResult, **kwargs: Any) -> None:
+    def on_llm_end(self, response: LLMResult, *, run_id: UUID, parent_run_id: Optional[UUID] = None, **kwargs: Any) -> Any:
         """Run when LLM ends running."""
         end_time = time.perf_counter()
-        duration = end_time - self.current_call_data.get(
-            "start_time", end_time
-        )  # Avoid KeyError if start_time missing
+        duration_ms = (end_time - self.current_call_data.get("start_time", end_time)) * 1000
 
+        # Extract token usage from response
         llm_output = response.llm_output if response.llm_output else {}
         token_usage = llm_output.get("token_usage", {})
 
-        prompt_tokens = token_usage.get("prompt_tokens")
-        completion_tokens = token_usage.get("completion_tokens")
-        total_tokens = token_usage.get("total_tokens")
+        input_tokens = token_usage.get("prompt_tokens")
+        output_tokens = token_usage.get("completion_tokens")
 
-        # If prompt_tokens not available from provider, use our estimate
-        if prompt_tokens is None:
-            prompt_tokens = self.current_call_data.get("estimated_input_tokens")
+        # Get model name
+        model_name = self.current_call_data.get("model_name", "Unknown")
+        
+        # Determine provider from model name or invocation params
+        provider = self._determine_provider(model_name, self.current_call_data.get("invocation_params", {}))
 
-        # Estimate completion tokens if not available (less accurate)
-        if completion_tokens is None and response.generations:
-            completion_text = "".join(
+        # Get text content
+        input_text = "\n".join(self.current_call_data.get("prompts", []))
+        output_text = ""
+        if response.generations:
+            output_text = "".join(
                 gen.text for run_gens in response.generations for gen in run_gens
             )
-            completion_tokens = _estimate_tokens(
-                completion_text,
-                self.current_call_data.get("model_name", "gpt-3.5-turbo"),
-            )
 
-        if (
-            total_tokens is None
-            and prompt_tokens is not None
-            and completion_tokens is not None
-        ):
-            total_tokens = prompt_tokens + completion_tokens
+        # Track the call
+        self.tracker.track_llm_call(
+            provider=provider,
+            model=model_name,
+            input_text=input_text,
+            output_text=output_text,
+            duration_ms=duration_ms,
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+            metadata={"callback_source": "langchain"}
+        )
 
-        # Try to get model name from response if not in serialized
-        if self.current_call_data.get("model_name") == "Unknown" and llm_output.get(
-            "model_name"
-        ):
-            self.current_call_data["model_name"] = llm_output.get("model_name")
-        elif self.current_call_data.get(
-            "model_name"
-        ) == "Unknown" and self.current_call_data.get("invocation_params", {}).get(
-            "model"
-        ):
-            self.current_call_data["model_name"] = self.current_call_data.get(
-                "invocation_params", {}
-            ).get("model")
-
-        self.last_input_tokens = prompt_tokens or 0
-        self.last_output_tokens = completion_tokens or 0
-        self.last_duration_ms = round(duration * 1000, 2)
-        self.last_cost = 0.0  # Placeholder for cost calculation
-
-        stats_entry = {
-            "call_id": self.current_call_data.get("call_id"),
-            "model_name": self.current_call_data.get("model_name", "Unknown"),
-            "duration_ms": self.last_duration_ms,
-            "prompt_tokens": self.last_input_tokens,
-            "completion_tokens": self.last_output_tokens,
-            "total_tokens": total_tokens,
-            "cost_usd": self.last_cost,
-            "timestamp": time.time(),
-            # "prompts": self.current_call_data.get("prompts"), # Optional: for debugging, can be verbose
-            # "response": response.generations[0][0].text if response.generations and response.generations[0] else None # Optional
-        }
-        _llm_stats_store.append(stats_entry)
-        self.current_call_data = {}  # Reset for next call
+        self.current_call_data = {}
 
     def on_llm_error(
-        self, error: Union[Exception, KeyboardInterrupt], **kwargs: Any
-    ) -> None:
+        self, error: BaseException, *, run_id: UUID, parent_run_id: Optional[UUID] = None, **kwargs: Any
+    ) -> Any:
         """Run when LLM errors."""
+        # Still track failed calls for monitoring
         end_time = time.perf_counter()
-        duration = end_time - self.current_call_data.get("start_time", end_time)
+        duration_ms = (end_time - self.current_call_data.get("start_time", end_time)) * 1000
 
-        stats_entry = {
+        model_name = self.current_call_data.get("model_name", "Unknown")
+        provider = self._determine_provider(model_name, self.current_call_data.get("invocation_params", {}))
+
+        # Track error
+        error_record = {
             "call_id": self.current_call_data.get("call_id"),
-            "model_name": self.current_call_data.get("model_name", "Unknown"),
-            "duration_ms": round(duration * 1000, 2),
-            "error": str(error),
             "timestamp": time.time(),
+            "provider": provider,
+            "model": model_name,
+            "duration_ms": duration_ms,
+            "error": str(error),
+            "metadata": {"callback_source": "langchain", "status": "error"}
         }
-        _llm_stats_store.append(stats_entry)
-        self.current_call_data = {}  # Reset
+        
+        # Add to session stats as error record
+        self.tracker.session_stats.append(error_record)
+        self.current_call_data = {}
 
-    # TODO: Implement handlers for on_chat_model_start, on_chain_start/end, on_tool_start/end if needed for more granular tracking
-    # For embeddings, a similar callback or direct wrapping might be needed if LangChain doesn't provide callbacks for them.
-    # Or, we can wrap the embedding generation call itself.
+    def _determine_provider(self, model_name: str, invocation_params: Dict[str, Any]) -> str:
+        """Determine provider from model name or invocation params."""
+        model_lower = model_name.lower()
+        
+        if "claude" in model_lower or "anthropic" in model_lower:
+            return "anthropic"
+        elif "gpt" in model_lower or "openai" in model_lower:
+            return "openai"
+        elif "ollama" in model_lower or invocation_params.get("base_url", "").find("11434") != -1:
+            return "ollama"
+        else:
+            return "unknown"
 
     def on_chain_start(
-        self, serialized: Dict[str, Any], inputs: Dict[str, Any], **kwargs: Any
+        self, serialized: Dict[str, Any], inputs: Dict[str, Any], *, run_id: UUID, parent_run_id: Optional[UUID] = None, tags: Optional[List[str]] = None, metadata: Optional[Dict[str, Any]] = None, **kwargs: Any
     ) -> Any:
         """Run when chain starts running."""
-        # For now, just log chain starts for context, can be expanded
-        # print(f"Chain started: {serialized.get('name', 'UnknownChain')}")
         pass
 
-    def on_chain_end(self, outputs: Dict[str, Any], **kwargs: Any) -> Any:
+    def on_chain_end(self, outputs: Dict[str, Any], *, run_id: UUID, parent_run_id: Optional[UUID] = None, **kwargs: Any) -> Any:
         """Run when chain ends running."""
-        # print(f"Chain ended. Outputs: {list(outputs.keys())}")
         pass
 
 
@@ -287,16 +462,17 @@ class LLMTracker:
     def _load_stats(self) -> None:
         """Load statistics from file if available."""
         try:
-            stats_path = Path(self.stats_file)
-            if stats_path.exists():
-                with open(stats_path, "r") as f:
-                    data = json.load(f)
-                    self.total_input_tokens = data.get("total_input_tokens", 0)
-                    self.total_output_tokens = data.get("total_output_tokens", 0)
-                    self.total_requests = data.get("total_requests", 0)
-                    self.total_duration_ms = data.get("total_duration_ms", 0)
-                    self.total_cost = data.get("total_cost", 0.0)
-                    self.usage_history = data.get("usage_history", [])
+            if self.stats_file:
+                stats_path = Path(self.stats_file)
+                if stats_path.exists():
+                    with open(stats_path, "r") as f:
+                        data = json.load(f)
+                        self.total_input_tokens = data.get("total_input_tokens", 0)
+                        self.total_output_tokens = data.get("total_output_tokens", 0)
+                        self.total_requests = data.get("total_requests", 0)
+                        self.total_duration_ms = data.get("total_duration_ms", 0)
+                        self.total_cost = data.get("total_cost", 0.0)
+                        self.usage_history = data.get("usage_history", [])
         except Exception:
             # If loading fails, start with empty stats
             pass
@@ -304,8 +480,9 @@ class LLMTracker:
     def _save_stats(self) -> None:
         """Save statistics to file."""
         try:
-            stats_path = Path(self.stats_file)
-            stats_path.parent.mkdir(parents=True, exist_ok=True)
+            if self.stats_file:
+                stats_path = Path(self.stats_file)
+                stats_path.parent.mkdir(parents=True, exist_ok=True)
 
             data = {
                 "total_input_tokens": self.total_input_tokens,
@@ -345,9 +522,13 @@ class LLMTracker:
         # Calculate cost based on provider and model
         provider_rates = self.PRICING.get(provider.lower(), self.PRICING["default"])
         model_rates = provider_rates.get(model.lower(), provider_rates.get("default"))
+        
+        # Ensure model_rates is not None
+        if model_rates is None:
+            model_rates = self.PRICING["default"]["default"]
 
-        input_cost = (input_tokens / 1000) * model_rates["input"]
-        output_cost = (output_tokens / 1000) * model_rates["output"]
+        input_cost = (input_tokens / 1000) * model_rates.get("input", 0.0)
+        output_cost = (output_tokens / 1000) * model_rates.get("output", 0.0)
         total_cost = input_cost + output_cost
 
         # Update totals
@@ -414,8 +595,8 @@ class LLMTracker:
         total_cost = sum(entry.get("cost", 0.0) for entry in recent_usage)
 
         # Group by model and provider
-        by_provider = {}
-        by_model = {}
+        by_provider: Dict[str, float] = {}
+        by_model: Dict[str, float] = {}
 
         for entry in recent_usage:
             provider = entry.get("provider", "unknown")
