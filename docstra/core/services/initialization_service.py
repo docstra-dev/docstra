@@ -46,8 +46,6 @@ class InitializationService:
         Returns:
             True if initialization was successful, False otherwise.
         """
-        self.console.print(Panel("Initializing Docstra Environment", expand=False))
-
         # ConfigManager will use default path if config_file_path is None
         config_manager = ConfigManager(config_file_path)
         abs_codebase_path = Path(codebase_path).resolve()
@@ -59,6 +57,7 @@ class InitializationService:
             return False
 
         if run_wizard:
+            self.console.print(Panel("Project Configuration Wizard", style="bold blue", expand=False))
             try:
                 # Updated to match run_config_wizard signature
                 run_config_wizard(
@@ -69,17 +68,17 @@ class InitializationService:
                 # Wizard saves the config, so we reload it to get the latest
                 # No need to call load_config as ConfigManager's constructor handles loading
                 self.console.print(
-                    f"[green]Configuration processed. Current settings loaded from {config_manager.config_path}[/]"
+                    f"[dim]✓ Configuration saved to {config_manager.config_path}[/]"
                 )
             except KeyboardInterrupt:
                 self.console.print(
-                    "\n[yellow]Wizard cancelled. Attempting to use or create default configuration.[/]"
+                    "\n[yellow]⚠ Wizard cancelled. Using default configuration.[/]"
                 )
                 # ConfigManager already handles loading config
             except Exception as e:
                 self.console.print(f"[bold red]Error during wizard: {e}[/]")
                 self.console.print(
-                    "[yellow]Proceeding with potentially default configuration.[/]"
+                    "[yellow]⚠ Proceeding with default configuration.[/]"
                 )
                 # ConfigManager already handles loading config
         else:
@@ -87,11 +86,11 @@ class InitializationService:
             if not Path(config_manager.config_path).exists():
                 config_manager.save()  # Using the renamed method
                 self.console.print(
-                    f"[green]Default configuration created at {config_manager.config_path}[/]"
+                    f"[dim]✓ Default configuration created[/]"
                 )
             else:
                 self.console.print(
-                    f"Using existing configuration at {config_manager.config_path}"
+                    f"[dim]✓ Using existing configuration[/]"
                 )
 
         # Determine persist_directory from loaded config
@@ -121,22 +120,32 @@ class InitializationService:
         docstraignore_path = persist_directory / ".docstraignore"
         
         # Use intelligent language detection to generate appropriate ignore patterns
-        self.console.print("[cyan]Analyzing codebase structure...[/]")
-        detector = LanguageDetector(str(abs_codebase_path))
-        detection_summary = detector.get_detection_summary()
+        with self.console.status("[cyan]🔍 Analyzing codebase structure...", spinner="dots"):
+            detector = LanguageDetector(str(abs_codebase_path))
+            detection_summary = detector.get_detection_summary()
+            intelligent_patterns = detector.generate_ignore_patterns()
         
-        # Show detection results to user
-        self.console.print(f"[green]Detected primary language:[/] {detection_summary['primary_language']}")
+        # Show detection results to user in a clean format
+        self.console.print(f"[dim]📊 Codebase Analysis:[/]")
+        self.console.print(f"   • [green]Primary language:[/] {detection_summary['primary_language']}")
+        self.console.print(f"   • [green]Project type:[/] {detection_summary['codebase_type']}")
+        
         if detection_summary['languages']:
-            languages_str = ", ".join([f"{lang} ({count} files)" for lang, count in detection_summary['languages'].items()])
-            self.console.print(f"[green]Languages found:[/] {languages_str}")
-        if detection_summary['frameworks']:
-            frameworks_str = ", ".join(detection_summary['frameworks'])
-            self.console.print(f"[green]Frameworks detected:[/] {frameworks_str}")
-        self.console.print(f"[green]Codebase type:[/] {detection_summary['codebase_type']}")
+            lang_count = len(detection_summary['languages'])
+            if lang_count <= 3:
+                languages_str = ", ".join([f"{lang} ({count})" for lang, count in detection_summary['languages'].items()])
+                self.console.print(f"   • [green]Languages:[/] {languages_str}")
+            else:
+                total_files = sum(detection_summary['languages'].values())
+                self.console.print(f"   • [green]Languages:[/] {lang_count} languages, {total_files} files total")
         
-        # Get intelligent ignore patterns
-        intelligent_patterns = detector.generate_ignore_patterns()
+        if detection_summary['frameworks']:
+            frameworks_count = len(detection_summary['frameworks'])
+            if frameworks_count <= 4:
+                frameworks_str = ", ".join(detection_summary['frameworks'])
+                self.console.print(f"   • [green]Frameworks:[/] {frameworks_str}")
+            else:
+                self.console.print(f"   • [green]Frameworks:[/] {frameworks_count} frameworks detected")
         
         # Merge with user-supplied patterns (if any)
         user_patterns = initial_exclude_patterns if initial_exclude_patterns else []
@@ -147,6 +156,7 @@ class InitializationService:
             if pat and pat not in seen:
                 merged_patterns.append(pat)
                 seen.add(pat)
+        
         ignore_content = (
             "# Patterns to exclude from ALL docstra operations\n"
             "# These patterns are applied universally before any command-specific rules.\n"
@@ -165,26 +175,14 @@ class InitializationService:
             with open(docstraignore_path, "w") as f:
                 f.write(ignore_content)
             self.console.print(
-                f"Universal exclusion patterns written to: [bold]{docstraignore_path}[/]"
-            )
-            self.console.print(
-                "[yellow]Edit this file to customize universal ignores.[/]"
-            )
-            self.console.print(
-                f"[yellow]Use {Path(config_manager.config_path).name} for command-specific include/exclude rules.[/]"
+                f"[dim]✓ Generated {len(merged_patterns)} exclusion patterns[/]"
             )
         except IOError as e:
             self.console.print(f"[bold red]Error writing {docstraignore_path}: {e}[/]")
             self.console.print(
-                "[yellow]Warning: Proceeding without .docstraignore file. This is not recommended.[/]"
+                "[yellow]⚠ Warning: Proceeding without .docstraignore file.[/]"
             )
 
-        self.console.print("\n[bold green]Docstra initialized successfully![/]")
-        self.console.print(f"Configuration: [cyan]{config_manager.config_path}[/]")
-        self.console.print(f"Storage Directory: [cyan]{persist_directory}[/]")
-        self.console.print(
-            "Run [bold]'docstra ingest'[/] to process and index your codebase."
-        )
         return True
 
     def ensure_config_exists(

@@ -23,6 +23,8 @@ from rich.progress import (
     TaskProgressColumn,
 )
 from rich.table import Table
+from rich.text import Text
+from rich.align import Align
 
 from docstra.core.config.settings import (
     ConfigManager,
@@ -57,6 +59,43 @@ from docstra.core.utils.language_detector import LanguageDetector
 from urllib.parse import quote
 import re
 from pathlib import Path
+
+
+def display_docstra_header() -> None:
+    """Display the DOCSTRA ASCII art header with 3D effect."""
+    ascii_art = """
+██████╗  ██████╗  ██████╗███████╗████████╗██████╗  █████╗ 
+██╔══██╗██╔═══██╗██╔════╝██╔════╝╚══██╔══╝██╔══██╗██╔══██╗
+██║  ██║██║   ██║██║     ███████╗   ██║   ██████╔╝███████║
+██║  ██║██║   ██║██║     ╚════██║   ██║   ██╔══██╗██╔══██║
+██████╔╝╚██████╔╝╚██████╗███████║   ██║   ██║  ██║██║  ██║
+╚═════╝  ╚═════╝  ╚═════╝╚══════╝   ╚═╝   ╚═╝  ╚═╝╚═╝  ╚═╝
+"""
+    
+    # Create a rich Text object with gradient colors for 3D effect
+    header_text = Text()
+    
+    # Split into lines and add gradient coloring
+    lines = ascii_art.strip().split('\n')
+    for i, line in enumerate(lines):
+        # Create a gradient effect from bright cyan to dim cyan
+        if i < 2:
+            style = "bright_cyan bold"
+        elif i < 4:
+            style = "cyan bold"
+        else:
+            style = "dim cyan"
+        
+        header_text.append(line + "\n", style=style)
+    
+    # Add tagline
+    tagline = Text("LLM-Powered Code Documentation Assistant", style="dim white italic")
+    
+    # Center the header and tagline
+    console.print()
+    console.print(Align.center(header_text))
+    console.print(Align.center(tagline))
+    console.print()
 
 
 def serve_documentation(docs_dir: str, port: int = 8000) -> None:
@@ -236,7 +275,8 @@ def init(
     from docstra.core.utils.file_collector import collect_files, FileCollector
     from docstra.core.config.wizard import run_init_wizard
 
-    console.print(Panel("Initializing code documentation assistant", expand=False))
+    # Display beautiful header for init command
+    display_docstra_header()
 
     # Detect if any options (other than the default positional argument) were provided
     import sys
@@ -276,19 +316,26 @@ def init(
     # Reload config after initialization
     config_manager = ConfigManager(config_path)
 
-    # Print initialization information
-    console.print(f"Codebase path: [bold]{abs_codebase_path}[/]")
-    console.print(f"Persist directory: [bold]{config_manager.config.storage.persist_directory}[/]")
-    console.print(
-        f"Model: [bold]{config_manager.config.model.provider}[/] - [bold]{config_manager.config.model.model_name}[/]"
-    )
+    # Create a clean summary panel
+    console.print("\n" + "─" * 60)
+    console.print(f"[bold cyan]✓ Project initialized successfully![/]")
+    console.print("─" * 60)
+    console.print(f"📁 [bold]Codebase:[/] {abs_codebase_path}")
+    console.print(f"⚙️  [bold]Configuration:[/] {config_manager.config_path}")
+    console.print(f"💾 [bold]Storage:[/] {config_manager.config.storage.persist_directory}")
+    console.print(f"🤖 [bold]Model:[/] {config_manager.config.model.provider} - {config_manager.config.model.model_name}")
+    console.print("─" * 60)
 
-    # Inform user that ingestion is now a separate step
-    console.print("\n[bold green]Initialization complete![/]")
-    console.print("[yellow]To ingest and index your codebase, run:[/] [bold]docstra ingest[/]")
+    # Next steps with cleaner formatting
+    console.print("\n[bold]📋 Next Steps:[/]")
+    console.print("   1️⃣  [cyan]docstra ingest[/] - Process and index your codebase")
+    console.print("   2️⃣  [cyan]docstra query[/] \"your question\" - Ask questions about your code")
+    console.print("   3️⃣  [cyan]docstra chat[/] - Start an interactive chat session")
 
     # Optionally prompt to run ingestion now
-    if Confirm.ask("Would you like to ingest and index your codebase now?", default=False):
+    console.print()
+    if Confirm.ask("🚀 Would you like to ingest and index your codebase now?", default=False):
+        console.print()  # Add spacing before ingestion
         ingest(
             codebase_path=abs_codebase_path,
             config_path=config_path,
@@ -297,7 +344,7 @@ def init(
             force=force,
         )
     else:
-        console.print("[green]You can ingest your codebase later with 'docstra ingest'.[/]")
+        console.print("[dim]💡 Run [cyan]docstra ingest[/] when ready to process your codebase[/]")
 
 
 @app.command()
@@ -947,7 +994,6 @@ def ingest(
     """
     # Show initial information
     abs_codebase_path = Path(codebase_path).resolve()
-    console.print(Panel(f"[bold]Ingesting codebase:[/] {abs_codebase_path}", expand=False))
     
     user_config = load_or_init_config(config_path)
 
@@ -968,28 +1014,25 @@ def ingest(
         # Update exclude patterns
         if exclude:
             updated_config.ingestion.exclude_patterns = exclude
-            console.print(f"[dim]Using exclude patterns:[/] {', '.join(exclude)}")
 
         # Update include dirs
         if include:
             updated_config.ingestion.include_dirs = include
-            console.print(f"[dim]Using include directories:[/] {', '.join(include)}")
 
         # Use the updated config
         user_config = updated_config
 
-    # Show configuration info
-    console.print(f"[dim]Model:[/] {user_config.model.provider} - {user_config.model.model_name}")
-    console.print(f"[dim]Embedding:[/] {user_config.embedding.provider} - {user_config.embedding.model_name}")
-    console.print(f"[dim]Storage:[/] {user_config.storage.persist_directory}")
-    
-    # Show cost warning for OpenAI embeddings
-    if user_config.embedding.provider.lower() == "openai":
-        console.print("[yellow]⚠ Using OpenAI embeddings - API costs will apply[/]")
-        console.print("[dim]Cost estimate will be shown before processing begins[/]")
-    
-    if force:
-        console.print("[yellow]Force mode enabled - will reindex existing data[/]")
+    # Create a clean header for ingestion
+    console.print(Panel(
+        f"[bold]🚀 Processing Codebase[/]\n"
+        f"📁 [dim]{abs_codebase_path}[/]\n"
+        f"🤖 [dim]{user_config.model.provider} - {user_config.model.model_name}[/]\n"
+        f"🔗 [dim]{user_config.embedding.provider} - {user_config.embedding.model_name}[/]" +
+        (f"\n⚠️  [yellow]OpenAI embeddings - API costs will apply[/]" if user_config.embedding.provider.lower() == "openai" else "") +
+        (f"\n🔄 [yellow]Force mode - will reindex existing data[/]" if force else ""),
+        style="bold blue",
+        expand=False
+    ))
 
     # Create ingestion service for this operation
     ingestion_service, _, _, _ = create_services_for_config(user_config)
@@ -1003,11 +1046,15 @@ def ingest(
         console.print("[bold red]Ingestion failed.[/]")
         raise typer.Exit(code=1)
     
-    # Show next steps
-    console.print("\n[bold green]Ready to use![/] You can now:")
-    console.print("  • [cyan]docstra query[/] \"your question\" - Ask questions about your code")
-    console.print("  • [cyan]docstra chat[/] - Start an interactive chat session")
-    console.print("  • [cyan]docstra generate[/] - Generate comprehensive documentation")
+    # Show next steps with emojis and cleaner formatting
+    console.print("\n" + "─" * 50)
+    console.print("[bold green]🎉 Ingestion Complete![/]")
+    console.print("─" * 50)
+    console.print("[bold]🔍 Try these commands:[/]")
+    console.print("   • [cyan]docstra query[/] \"your question\" - Ask questions about your code")
+    console.print("   • [cyan]docstra chat[/] - Start an interactive chat session")
+    console.print("   • [cyan]docstra generate[/] - Generate comprehensive documentation")
+    console.print("─" * 50)
 
 
 def format_file_link(abs_path: str, start_line, end_line) -> str:
