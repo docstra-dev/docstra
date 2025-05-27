@@ -6,6 +6,7 @@ from rich.prompt import Prompt, Confirm
 from rich.panel import Panel
 
 from docstra.core.config.settings import ConfigManager, DocumentationConfig
+from docstra.core.utils.colors import Colors
 
 
 class DocumentationWizard:
@@ -74,7 +75,7 @@ class DocumentationWizard:
         self.config["format"] = format_choice
 
         # Directory selection
-        self.console.print("\n[bold]Directory Selection[/bold]")
+        self.console.print(f"\n[{Colors.BOLD}]Directory Selection[/]")
         self._configure_directories()
 
         # Advanced options
@@ -82,15 +83,15 @@ class DocumentationWizard:
             self._configure_advanced_options()
 
         # Summary
-        self.console.print("\n[bold]Configuration Summary:[/bold]")
+        self.console.print(f"\n[{Colors.BOLD}]Configuration Summary:[/]")
         for key, value in self.config.items():
-            self.console.print(f"[cyan]{key}:[/cyan] {value}")
+            self.console.print(f"[{Colors.HIGHLIGHT}]{key}:[/] {value}")
 
         # Save configuration
         if Confirm.ask("Save this configuration?", default=True):
             self._save_config()
         else:
-            self.console.print("[yellow]Configuration not saved.[/]")
+            self.console.print(f"[{Colors.WARNING}]Configuration not saved.[/]")
 
     def _configure_directories(self) -> None:
         """Configure included and excluded directories/patterns."""
@@ -148,7 +149,7 @@ class DocumentationWizard:
                 if os.path.isdir(os.path.join(self.base_path, d))
             ]
         except Exception as e:
-            self.console.print(f"[bold red]Error discovering directories:[/] {str(e)}")
+            self.console.print(f"[{Colors.ERROR_BOLD}]Error discovering directories:[/] {str(e)}")
             return []
 
     def _configure_advanced_options(self) -> None:
@@ -197,15 +198,15 @@ class DocumentationWizard:
                     else:
                         # This case should ideally not happen if self.config is derived from DocumentationConfig model_dump
                         self.console.print(
-                            f"[yellow]Warning: Unknown key '{key}' found in wizard config. Skipping.[/]"
+                            f"[{Colors.WARNING}]Warning: Unknown key '{key}' found in wizard config. Skipping.[/]"
                         )
 
             self.config_manager.save()
             self.console.print(
-                f"[green]Configuration saved to:[/] {self.config_manager.config_path}"
+                f"[{Colors.SUCCESS}]Configuration saved to:[/] {self.config_manager.config_path}"
             )
         except Exception as e:
-            self.console.print(f"[bold red]Error saving configuration:[/] {str(e)}")
+            self.console.print(f"[{Colors.ERROR_BOLD}]Error saving configuration:[/] {str(e)}")
             self.console.print(
                 f"Please check your main configuration file: {self.config_manager.config_path}"
             )

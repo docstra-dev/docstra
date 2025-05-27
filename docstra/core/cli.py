@@ -59,10 +59,10 @@ from docstra.core.utils.language_detector import LanguageDetector
 from urllib.parse import quote
 import re
 from pathlib import Path
-
+from docstra.core.utils.colors import Colors
 
 def display_docstra_header() -> None:
-    """Display the DOCSTRA ASCII art header with 3D effect."""
+    """Display the DOCSTRA ASCII art header with subtle styling."""
     ascii_art = """
 ██████╗  ██████╗  ██████╗███████╗████████╗██████╗  █████╗ 
 ██╔══██╗██╔═══██╗██╔════╝██╔════╝╚══██╔══╝██╔══██╗██╔══██╗
@@ -72,24 +72,9 @@ def display_docstra_header() -> None:
 ╚═════╝  ╚═════╝  ╚═════╝╚══════╝   ╚═╝   ╚═╝  ╚═╝╚═╝  ╚═╝
 """
     
-    # Create a rich Text object with gradient colors for 3D effect
-    header_text = Text()
-    
-    # Split into lines and add gradient coloring
-    lines = ascii_art.strip().split('\n')
-    for i, line in enumerate(lines):
-        # Create a gradient effect from bright cyan to dim cyan
-        if i < 2:
-            style = "bright_cyan bold"
-        elif i < 4:
-            style = "cyan bold"
-        else:
-            style = "dim cyan"
-        
-        header_text.append(line + "\n", style=style)
-    
-    # Add tagline
-    tagline = Text("LLM-Powered Code Documentation Assistant", style="dim white italic")
+    # Use Rich's default styling - much cleaner
+    header_text = Text(ascii_art.strip(), style=Colors.HIGHLIGHT_BOLD)
+    tagline = Text("LLM-Powered Code Documentation Assistant", style=Colors.DIM)
     
     # Center the header and tagline
     console.print()
@@ -188,7 +173,7 @@ def serve_documentation(docs_dir: str, port: int = 8000) -> None:
         raise HTTPException(status_code=404, detail=f"File {path} not found")
 
     console.print(
-        f"[bold green]Starting documentation server at:[/] http://localhost:{port}"
+        f"[{Colors.SUCCESS_BOLD}]Starting documentation server at:[/] http://localhost:{port}"
     )
     uvicorn.run(app, host="0.0.0.0", port=port)
 
@@ -316,23 +301,23 @@ def init(
     # Reload config after initialization
     config_manager = ConfigManager(config_path)
 
-    # Create a clean summary panel
+    # Create a clean summary panel using semantic colors
     console.print("\n" + "─" * 60)
-    console.print(f"[bold cyan]✓ Project initialized successfully![/]")
+    console.print(f"[{Colors.SUCCESS_BOLD}]✓ Project initialized successfully![/]")
     console.print("─" * 60)
-    console.print(f"📁 [bold]Codebase:[/] {abs_codebase_path}")
-    console.print(f"⚙️  [bold]Configuration:[/] {config_manager.config_path}")
-    console.print(f"💾 [bold]Storage:[/] {config_manager.config.storage.persist_directory}")
-    console.print(f"🤖 [bold]Model:[/] {config_manager.config.model.provider} - {config_manager.config.model.model_name}")
+    console.print(f"📁 [{Colors.BOLD}]Codebase:[/] {abs_codebase_path}")
+    console.print(f"⚙️  [{Colors.BOLD}]Configuration:[/] {config_manager.config_path}")
+    console.print(f"💾 [{Colors.BOLD}]Storage:[/] {config_manager.config.storage.persist_directory}")
+    console.print(f"🤖 [{Colors.BOLD}]Model:[/] {config_manager.config.model.provider} - {config_manager.config.model.model_name}")
     console.print("─" * 60)
 
-    # Next steps with cleaner formatting
-    console.print("\n[bold]📋 Next Steps:[/]")
-    console.print("   1️⃣  [cyan]docstra ingest[/] - Process and index your codebase")
-    console.print("   2️⃣  [cyan]docstra query[/] \"your question\" - Ask questions about your code")
-    console.print("   3️⃣  [cyan]docstra chat[/] - Start an interactive chat session")
+    # Next steps with semantic colors
+    console.print(f"\n[{Colors.BOLD}]📋 Next Steps:[/]")
+    console.print(f"   1️⃣  [{Colors.HIGHLIGHT}]docstra ingest[/] - Process and index your codebase")
+    console.print(f"   2️⃣  [{Colors.HIGHLIGHT}]docstra query[/] \"your question\" - Ask questions about your code")
+    console.print(f"   3️⃣  [{Colors.HIGHLIGHT}]docstra chat[/] - Start an interactive chat session")
 
-    # Optionally prompt to run ingestion now
+    # Optionally prompt to run ingestion now - use Rich defaults
     console.print()
     if Confirm.ask("🚀 Would you like to ingest and index your codebase now?", default=False):
         console.print()  # Add spacing before ingestion
@@ -344,7 +329,7 @@ def init(
             force=force,
         )
     else:
-        console.print("[dim]💡 Run [cyan]docstra ingest[/] when ready to process your codebase[/]")
+        console.print(f"[{Colors.DIM}]💡 Run [{Colors.HIGHLIGHT}]docstra ingest[/] when ready to process your codebase[/]")
 
 
 @app.command()
@@ -363,11 +348,11 @@ def document(
 
     # Check if file exists
     if not os.path.exists(file_path):
-        console.print(f"[bold red]Error:[/] File {file_path} does not exist")
+        console.print(f"[{Colors.ERROR_BOLD}]Error:[/] File {file_path} does not exist")
         sys.exit(1)
 
     # Process the file
-    console.print(f"Generating documentation for [bold]{file_path}[/]")
+    console.print(f"Generating documentation for [{Colors.BOLD}]{file_path}[/]")
 
     # Initialize document processor
     doc_processor = DocumentProcessor()
@@ -382,7 +367,7 @@ def document(
     llm_client = get_llm_client(config_manager)
 
     # Generate documentation
-    with console.status("[cyan]Generating documentation...", spinner="dots"):
+    with console.status(f"[{Colors.INFO}]Generating documentation...", spinner="dots"):
         documentation = llm_client.document_code(
             code=document.content,
             language=language,
@@ -395,7 +380,7 @@ def document(
     if output_file:
         with open(output_file, "w") as f:
             f.write(documentation_str)
-        console.print(f"Documentation saved to [bold]{output_file}[/]")
+        console.print(f"Documentation saved to [{Colors.BOLD}]{output_file}[/]")
     else:
         console.print(
             Panel(
@@ -421,11 +406,11 @@ def explain(
 
     # Check if file exists
     if not os.path.exists(file_path):
-        console.print(f"[bold red]Error:[/] File {file_path} does not exist")
+        console.print(f"[{Colors.ERROR_BOLD}]Error:[/] File {file_path} does not exist")
         sys.exit(1)
 
     # Process the file
-    console.print(f"Generating explanation for [bold]{file_path}[/]")
+    console.print(f"Generating explanation for [{Colors.BOLD}]{file_path}[/]")
 
     # Initialize document processor
     doc_processor = DocumentProcessor()
@@ -440,7 +425,7 @@ def explain(
     llm_client = get_llm_client(config_manager)
 
     # Generate explanation
-    with console.status("[cyan]Generating explanation...", spinner="dots"):
+    with console.status(f"[{Colors.INFO}]Generating explanation...", spinner="dots"):
         explanation = llm_client.explain_code(
             code=document.content,
             language=language,
@@ -453,7 +438,7 @@ def explain(
     if output_file:
         with open(output_file, "w") as f:
             f.write(explanation_str)
-        console.print(f"Explanation saved to [bold]{output_file}[/]")
+        console.print(f"Explanation saved to [{Colors.BOLD}]{output_file}[/]")
     else:
         console.print(
             Panel(
@@ -482,9 +467,9 @@ def examples(
     llm_client = get_llm_client(config_manager)
 
     # Generate examples
-    console.print(f"Generating {language} code examples for: [bold]{query}[/]")
+    console.print(f"Generating {language} code examples for: [{Colors.BOLD}]{query}[/]")
 
-    with console.status("[cyan]Generating examples...", spinner="dots"):
+    with console.status(f"[{Colors.INFO}]Generating examples...", spinner="dots"):
         examples = llm_client.generate_examples(request=query, language=language)
         # Ensure examples is a string
         examples_str = str(examples)
@@ -493,7 +478,7 @@ def examples(
     if output_file:
         with open(output_file, "w") as f:
             f.write(examples_str)
-        console.print(f"Examples saved to [bold]{output_file}[/]")
+        console.print(f"Examples saved to [{Colors.BOLD}]{output_file}[/]")
     else:
         console.print(
             Panel(Markdown(examples_str), title=f"{language} Examples for {query}")
@@ -524,7 +509,7 @@ def config(
     # Reset configuration if requested
     if reset:
         config_manager.reset_to_default()
-        console.print("[bold green]Configuration reset to default[/]")
+        console.print(f"[{Colors.SUCCESS_BOLD}]Configuration reset to default[/]")
 
     # Update configuration if needed
     changes = False
@@ -535,7 +520,7 @@ def config(
             config_manager.update(model={"provider": provider})
             changes = True
         except ValueError:
-            console.print(f"[bold red]Error:[/] Invalid model provider: {set_model}")
+            console.print(f"[{Colors.ERROR_BOLD}]Error:[/] Invalid model provider: {set_model}")
             console.print("Available providers: anthropic, openai, ollama, local")
 
     if set_model_name:
@@ -547,35 +532,35 @@ def config(
         changes = True
 
     if changes:
-        console.print("[bold green]Configuration updated[/]")
+        console.print(f"[{Colors.SUCCESS_BOLD}]Configuration updated[/]")
 
-    # Show configuration if requested or if no other action was taken
+    # Show configuration - use semantic colors consistently
     if show or (not reset and not changes):
         config = config_manager.config
 
-        console.print("[bold]Current Configuration:[/]")
-        console.print(f"Config path: [cyan]{config_manager.config_path}[/]")
-        console.print("\n[bold]Model:[/]")
-        console.print(f"  Provider: [cyan]{config.model.provider}[/]")
-        console.print(f"  Model name: [cyan]{config.model.model_name}[/]")
-        console.print(f"  Temperature: [cyan]{config.model.temperature}[/]")
-        console.print(f"  Max tokens: [cyan]{config.model.max_tokens}[/]")
+        console.print(f"[{Colors.BOLD}]Current Configuration:[/]")
+        console.print(f"Config path: [{Colors.HIGHLIGHT}]{config_manager.config_path}[/]")
+        console.print(f"\n[{Colors.BOLD}]Model:[/]")
+        console.print(f"  Provider: [{Colors.HIGHLIGHT}]{config.model.provider}[/]")
+        console.print(f"  Model name: [{Colors.HIGHLIGHT}]{config.model.model_name}[/]")
+        console.print(f"  Temperature: [{Colors.HIGHLIGHT}]{config.model.temperature}[/]")
+        console.print(f"  Max tokens: [{Colors.HIGHLIGHT}]{config.model.max_tokens}[/]")
 
-        console.print("\n[bold]Embedding:[/]")
-        console.print(f"  Provider: [cyan]{config.embedding.provider}[/]")
-        console.print(f"  Model name: [cyan]{config.embedding.model_name}[/]")
+        console.print(f"\n[{Colors.BOLD}]Embedding:[/]")
+        console.print(f"  Provider: [{Colors.HIGHLIGHT}]{config.embedding.provider}[/]")
+        console.print(f"  Model name: [{Colors.HIGHLIGHT}]{config.embedding.model_name}[/]")
 
-        console.print("\n[bold]Storage:[/]")
+        console.print(f"\n[{Colors.BOLD}]Storage:[/]")
         console.print(
-            f"  Persist directory: [cyan]{config.storage.persist_directory}[/]"
+            f"  Persist directory: [{Colors.HIGHLIGHT}]{config.storage.persist_directory}[/]"
         )
 
-        console.print("\n[bold]Processing:[/]")
-        console.print(f"  Chunk size: [cyan]{config.processing.chunk_size}[/]")
-        console.print(f"  Chunk overlap: [cyan]{config.processing.chunk_overlap}[/]")
+        console.print(f"\n[{Colors.BOLD}]Processing:[/]")
+        console.print(f"  Chunk size: [{Colors.HIGHLIGHT}]{config.processing.chunk_size}[/]")
+        console.print(f"  Chunk overlap: [{Colors.HIGHLIGHT}]{config.processing.chunk_overlap}[/]")
         console.print("  Exclude patterns:")
         for pattern in config.processing.exclude_patterns:
-            console.print(f"    - [cyan]{pattern}[/]")
+            console.print(f"    - [{Colors.HIGHLIGHT}]{pattern}[/]")
 
 
 def parse_start_end(line_spec: str) -> tuple[int, int]:
@@ -604,11 +589,11 @@ def analyze(
 
     # Check if file exists
     if not os.path.exists(file_path):
-        console.print(f"[bold red]Error:[/] File {file_path} does not exist")
+        console.print(f"[{Colors.ERROR_BOLD}]Error:[/] File {file_path} does not exist")
         sys.exit(1)
 
     # Process the file
-    console.print(f"Analyzing [bold]{file_path}[/]")
+    console.print(f"Analyzing [{Colors.BOLD}]{file_path}[/]")
 
     # Initialize document processor
     doc_processor = DocumentProcessor()
@@ -627,14 +612,14 @@ def analyze(
 
             if start_line < 1 or end_line > document.metadata.line_count:
                 console.print(
-                    f"[bold red]Error:[/] Line range {start_line}-{end_line} is out of bounds (1-{document.metadata.line_count})"
+                    f"[{Colors.ERROR_BOLD}]Error:[/] Line range {start_line}-{end_line} is out of bounds (1-{document.metadata.line_count})"
                 )
                 sys.exit(1)
 
             content_lines = document.content.splitlines()
             code_to_analyze = "\n".join(content_lines[start_line - 1 : end_line])
         except Exception:
-            console.print(f"[bold red]Error:[/] Invalid line range: {lines}")
+            console.print(f"[{Colors.ERROR_BOLD}]Error:[/] Invalid line range: {lines}")
             sys.exit(1)
     else:
         code_to_analyze = document.content
@@ -643,7 +628,7 @@ def analyze(
     llm_client = get_llm_client(config_manager)
 
     # Analyze the code
-    with console.status("[cyan]Analyzing code...", spinner="dots"):
+    with console.status(f"[{Colors.INFO}]Analyzing code...", spinner="dots"):
         analysis = llm_client.explain_code(
             code=code_to_analyze,
             language=language,
@@ -739,9 +724,9 @@ def generate(
         saved_config = load_saved_config(path)
         if saved_config:
             config.update(saved_config)
-            console.print("[green]Loaded saved configuration[/]")
+            console.print(f"[{Colors.SUCCESS_BOLD}]Loaded saved configuration[/]")
         else:
-            console.print("[yellow]No saved configuration found, using defaults[/]")
+            console.print(f"[{Colors.WARNING}]No saved configuration found, using defaults[/]")
 
     # Override with command line arguments
     if output_dir:
@@ -774,26 +759,26 @@ def generate(
             run_documentation_wizard(console, path, config_manager)
             # Since run_documentation_wizard doesn't return a value, no update needed
         except KeyboardInterrupt:
-            console.print("\n[yellow]Wizard cancelled, using default/CLI values[/]")
+            console.print(f"\n[{Colors.WARNING}]Wizard cancelled, using default/CLI values[/]")
         except Exception as e:
-            console.print(f"\n[red]Error in wizard: {e}[/]")
-            console.print("[yellow]Proceeding with default/CLI values[/]")
+            console.print(f"\n[{Colors.ERROR}]Error in wizard: {e}[/]")
+            console.print(f"[{Colors.WARNING}]Proceeding with default/CLI values[/]")
 
     # Print configuration summary
     console.print(
-        Panel(f"[bold]Generating documentation for:[/] {config['name']}", expand=False)
+        Panel(f"[{Colors.BOLD}]Generating documentation for:[/] {config['name']}", expand=False)
     )
-    console.print(f"[bold]Description:[/] {config['description']}")
-    console.print(f"[bold]Output directory:[/] {config['output_dir']}")
-    console.print(f"[bold]Format:[/] {config['format']}")
+    console.print(f"[{Colors.BOLD}]Description:[/] {config['description']}")
+    console.print(f"[{Colors.BOLD}]Output directory:[/] {config['output_dir']}")
+    console.print(f"[{Colors.BOLD}]Format:[/] {config['format']}")
 
     if config["include_dirs"]:
         console.print(
-            f"[bold]Including directories:[/] {', '.join(config['include_dirs'])}"
+            f"[{Colors.BOLD}]Including directories:[/] {', '.join(config['include_dirs'])}"
         )
 
     console.print(
-        f"[bold]Excluding directories:[/] {', '.join(config['exclude_dirs'])}"
+        f"[{Colors.BOLD}]Excluding directories:[/] {', '.join(config['exclude_dirs'])}"
     )
 
     # Create output directory - ensure string type
@@ -829,7 +814,7 @@ def generate(
         console=console,
     ) as progress:
         processing_task = progress.add_task(
-            "[cyan]Processing files...", total=len(file_paths)
+            f"[{Colors.INFO}]Processing files...", total=len(file_paths)
         )
 
         for file_path in file_paths:
@@ -838,12 +823,12 @@ def generate(
                 document = doc_processor.process(str(file_path))
                 documents.append(document)
             except Exception as e:
-                console.print(f"[yellow]Error processing {file_path}: {str(e)}[/]")
+                console.print(f"[{Colors.WARNING}]Error processing {file_path}: {str(e)}[/]")
             progress.update(processing_task, advance=1)
 
     # No files found
     if not documents:
-        console.print("[bold yellow]No files found to document![/]")
+        console.print(f"[{Colors.WARNING_BOLD}]No files found to document![/]")
         return
 
     # Generate documentation for each document
@@ -871,8 +856,8 @@ def generate(
         setattr(doc_generator, "theme", config["theme"])
     except AttributeError:
         # If these attributes don't exist, log a warning but continue
-        console.print("[yellow]Warning: Unable to set all documentation attributes.[/]")
-        console.print("[yellow]Some customization options may not be applied.[/]")
+        console.print(f"[{Colors.WARNING}]Warning: Unable to set all documentation attributes.[/]")
+        console.print(f"[{Colors.WARNING}]Some customization options may not be applied.[/]")
 
     with Progress(
         SpinnerColumn(),
@@ -893,9 +878,9 @@ def generate(
     # Ensure output_dir is a string for os.path.abspath
     output_dir_abs = os.path.abspath(output_dir_str)
     console.print(
-        f"\n[bold green]Documentation generated successfully at:[/] {output_dir_abs}"
+        f"\n[{Colors.SUCCESS_BOLD}]Documentation generated successfully at:[/] {output_dir_abs}"
     )
-    console.print(f"[green]Documented {len(documents)} files[/]")
+    console.print(f"[{Colors.SUCCESS}]Documented {len(documents)} files[/]")
 
     # Serve documentation if requested
     if serve:
@@ -920,7 +905,7 @@ def load_or_init_config(config_path: Optional[str] = None) -> UserConfig:
         config_manager = ConfigManager(config_path=config_path)
         return config_manager.config
     except Exception as e:
-        console.print(f"[bold red]Error loading or initializing configuration:[/] {e}")
+        console.print(f"[{Colors.ERROR_BOLD}]Error loading or initializing configuration:[/] {e}")
         raise typer.Exit(code=1)
 
 
@@ -930,7 +915,7 @@ def get_llm_tracker() -> Optional[UniversalLLMTracker]:
         from docstra.core.tracking.llm_tracker import get_global_tracker
         return get_global_tracker()
     except Exception as e:
-        console.print(f"[yellow]Warning: Failed to initialize LLM tracking: {e}[/]")
+        console.print(f"[{Colors.WARNING}]Warning: Failed to initialize LLM tracking: {e}[/]")
         return None
 
 
@@ -1024,13 +1009,13 @@ def ingest(
 
     # Create a clean header for ingestion
     console.print(Panel(
-        f"[bold]🚀 Processing Codebase[/]\n"
-        f"📁 [dim]{abs_codebase_path}[/]\n"
-        f"🤖 [dim]{user_config.model.provider} - {user_config.model.model_name}[/]\n"
-        f"🔗 [dim]{user_config.embedding.provider} - {user_config.embedding.model_name}[/]" +
-        (f"\n⚠️  [yellow]OpenAI embeddings - API costs will apply[/]" if user_config.embedding.provider.lower() == "openai" else "") +
-        (f"\n🔄 [yellow]Force mode - will reindex existing data[/]" if force else ""),
-        style="bold blue",
+        f"[{Colors.BOLD}]🚀 Processing Codebase[/]\n"
+        f"📁 [{Colors.DIM}]{abs_codebase_path}[/]\n"
+        f"🤖 [{Colors.DIM}]{user_config.model.provider} - {user_config.model.model_name}[/]\n"
+        f"🔗 [{Colors.DIM}]{user_config.embedding.provider} - {user_config.embedding.model_name}[/]" +
+        (f"\n⚠️  [{Colors.WARNING}]OpenAI embeddings - API costs will apply[/]" if user_config.embedding.provider.lower() == "openai" else "") +
+        (f"\n🔄 [{Colors.WARNING}]Force mode - will reindex existing data[/]" if force else ""),
+        style=Colors.INFO_BOLD,
         expand=False
     ))
 
@@ -1043,17 +1028,17 @@ def ingest(
     )
 
     if not success:
-        console.print("[bold red]Ingestion failed.[/]")
+        console.print(f"[{Colors.ERROR_BOLD}]Ingestion failed.[/]")
         raise typer.Exit(code=1)
     
     # Show next steps with emojis and cleaner formatting
     console.print("\n" + "─" * 50)
-    console.print("[bold green]🎉 Ingestion Complete![/]")
+    console.print(f"[{Colors.SUCCESS_BOLD}]🎉 Ingestion Complete![/]")
     console.print("─" * 50)
-    console.print("[bold]🔍 Try these commands:[/]")
-    console.print("   • [cyan]docstra query[/] \"your question\" - Ask questions about your code")
-    console.print("   • [cyan]docstra chat[/] - Start an interactive chat session")
-    console.print("   • [cyan]docstra generate[/] - Generate comprehensive documentation")
+    console.print(f"[{Colors.BOLD}]🔍 Try these commands:[/]")
+    console.print(f"   • [{Colors.HIGHLIGHT}]docstra query[/] \"your question\" - Ask questions about your code")
+    console.print(f"   • [{Colors.HIGHLIGHT}]docstra chat[/] - Start an interactive chat session")
+    console.print(f"   • [{Colors.HIGHLIGHT}]docstra generate[/] - Generate comprehensive documentation")
     console.print("─" * 50)
 
 
@@ -1068,7 +1053,7 @@ def format_file_link(abs_path: str, start_line, end_line) -> str:
         elif start_line < end_line:
             output += f" (#L{start_line}-L{end_line})"
     
-    return f"[cyan]{output}[/cyan]"
+    return f"[{Colors.HIGHLIGHT}]{output}[/{Colors.HIGHLIGHT}]"
 
 
 def postprocess_llm_output_with_links(answer: str, sources: list) -> str:
@@ -1146,7 +1131,7 @@ def query(
         if isinstance(query_service_with_config.llm_client, OllamaClient):
             is_connected, message = query_service_with_config.llm_client.validate_connection()
             if not is_connected:
-                console.print(f"[bold red]Error:[/] {message}")
+                console.print(f"[{Colors.ERROR_BOLD}]Error:[/] {message}")
                 raise typer.Exit(code=1)
 
     # Call answer_question with the right parameters
@@ -1162,7 +1147,7 @@ def query(
 
     # Show sources if available
     if sources:
-        console.print("\n[bold]Sources:[/]")
+        console.print(f"\n[{Colors.BOLD}]Sources:[/]")
         for i, source in enumerate(sources[:5]):
             meta = source.get("metadata", {})
             filepath = meta.get("document_id", "Unknown")
@@ -1173,18 +1158,18 @@ def query(
             except Exception:
                 abs_path = filepath
             link_str = format_file_link(abs_path, start_line, end_line)
-            console.print(f"[bold]{i + 1}.[/] {link_str}")
+            console.print(f"[{Colors.BOLD}]{i + 1}.[/] {link_str}")
 
     # Display token usage statistics if tracking is enabled
     llm_tracker = get_llm_tracker()
     if llm_tracker and llm_tracker.session_stats:
-        console.print("\n[dim]LLM Usage:[/dim]")
+        console.print(f"\n[{Colors.DIM}]LLM Usage:[/]")
         # Get the last usage from session stats
         usage = llm_tracker.session_stats[-1]
-        console.print(f"[dim]Input tokens: {usage.get('input_tokens', 'N/A')}[/dim]")
-        console.print(f"[dim]Output tokens: {usage.get('output_tokens', 'N/A')}[/dim]")
+        console.print(f"[{Colors.DIM}]Input tokens: {usage.get('input_tokens', 'N/A')}[/]")
+        console.print(f"[{Colors.DIM}]Output tokens: {usage.get('output_tokens', 'N/A')}[/]")
         if "cost_usd" in usage:
-            console.print(f"[dim]Approximate cost: ${usage.get('cost_usd', 0):.5f}[/dim]")
+            console.print(f"[{Colors.DIM}]Approximate cost: ${usage.get('cost_usd', 0):.5f}[/]")
 
 
 # Add chat command - new functionality per refactoring plan
@@ -1222,20 +1207,20 @@ def chat(
         if hasattr(chat_service, 'llm_client') and isinstance(chat_service.llm_client, OllamaClient):
             is_connected, message = chat_service.llm_client.validate_connection()
             if not is_connected:
-                console.print(f"[bold red]Error:[/] {message}")
+                console.print(f"[{Colors.ERROR_BOLD}]Error:[/] {message}")
                 raise typer.Exit(code=1)
 
     # Handle session management options
     if list_sessions:
         sessions = chat_service.list_sessions()
         if not sessions:
-            console.print("[yellow]No chat sessions found.[/]")
+            console.print(f"[{Colors.WARNING}]No chat sessions found.[/]")
         return
 
-        console.print("[bold]Available chat sessions:[/]")
+        console.print(f"[{Colors.BOLD}]Available chat sessions:[/]")
         for i, session in enumerate(sessions):
             console.print(
-                f"[bold]{i + 1}.[/] [cyan]{session['name']}[/] "
+                f"[{Colors.BOLD}]{i + 1}.[/] [{Colors.HIGHLIGHT}]{session['name']}[/] "
                 f"(ID: {session['id']}, Last accessed: {session['last_accessed_at']})"
             )
         return
@@ -1243,9 +1228,9 @@ def chat(
     if delete_session:
         success = chat_service.delete_session(delete_session)
         if success:
-            console.print(f"[green]Session {delete_session} deleted successfully.[/]")
+            console.print(f"[{Colors.SUCCESS}]Session {delete_session} deleted successfully.[/]")
         else:
-            console.print(f"[red]Failed to delete session {delete_session}.[/]")
+            console.print(f"[{Colors.ERROR}]Failed to delete session {delete_session}.[/]")
         return
 
     # Start or resume a session
@@ -1253,9 +1238,9 @@ def chat(
 
     # Interactive chat loop
     console.print(
-        "[bold]Chat session started. Type 'exit' or 'quit' to end the session.[/]"
+        f"[{Colors.BOLD}]Chat session started. Type 'exit' or 'quit' to end the session.[/]"
     )
-    console.print("[bold]Type 'help' for available commands.[/]")
+    console.print(f"[{Colors.BOLD}]Type 'help' for available commands.[/]")
 
     while True:
         try:
@@ -1264,16 +1249,16 @@ def chat(
 
             # Check for exit/quit command
             if user_input.lower() in ["exit", "quit"]:
-                console.print("[bold]Ending chat session.[/]")
+                console.print(f"[{Colors.BOLD}]Ending chat session.[/]")
                 break
 
             # Check for help command
             if user_input.lower() == "help":
-                console.print("\n[bold]Available commands:[/]")
-                console.print("  [cyan]exit/quit[/] - End the chat session")
-                console.print("  [cyan]help[/] - Show this help message")
-                console.print("  [cyan]clear[/] - Clear the screen")
-                console.print("  [cyan]stats[/] - Show token usage statistics")
+                console.print(f"\n[{Colors.BOLD}]Available commands:[/]")
+                console.print(f"  [{Colors.HIGHLIGHT}]exit/quit[/] - End the chat session")
+                console.print(f"  [{Colors.HIGHLIGHT}]help[/] - Show this help message")
+                console.print(f"  [{Colors.HIGHLIGHT}]clear[/] - Clear the screen")
+                console.print(f"  [{Colors.HIGHLIGHT}]stats[/] - Show token usage statistics")
                 continue
 
             # Check for clear command
@@ -1287,9 +1272,9 @@ def chat(
                 if llm_tracker:
                     session_summary = llm_tracker.get_session_summary()
                     if "message" in session_summary:
-                        console.print(f"\n[yellow]{session_summary['message']}[/]")
+                        console.print(f"\n[{Colors.WARNING}]{session_summary['message']}[/]")
                     else:
-                        console.print("\n[bold]Session Statistics:[/]")
+                        console.print(f"\n[{Colors.BOLD}]Session Statistics:[/]")
                         session_stats = session_summary.get("session_summary", {})
                         console.print(
                             f"Total requests: {session_stats.get('total_requests', 0)}"
@@ -1303,24 +1288,24 @@ def chat(
                         console.print(f"Total cost: ${session_stats.get('total_cost', 0):.5f}")
                         console.print(f"Total duration: {session_stats.get('total_duration_ms', 0):.0f} ms")
                 else:
-                    console.print("\n[yellow]LLM tracking not available.[/yellow]")
+                    console.print(f"\n[{Colors.WARNING}]LLM tracking not available.[/{Colors.WARNING}]")
                 continue
 
             # Get response from the chat service
-            with console.status("[cyan]Thinking...[/]", spinner="dots"):
+            with console.status(f"[{Colors.INFO}]Thinking...", spinner="dots"):
                 response = chat_service.get_response(user_input)
 
             # Display the response
             console.print(f"\n[Assistant]: {response}")
 
         except KeyboardInterrupt:
-            console.print("\n[bold]Chat session interrupted.[/]")
+            console.print(f"\n[{Colors.BOLD}]Chat session interrupted.[/]")
             break
         except EOFError:
-            console.print("\n[bold]Chat session ended.[/]")
+            console.print(f"\n[{Colors.BOLD}]Chat session ended.[/]")
             break
         except Exception as e:
-            console.print(f"\n[bold red]Error in chat: {e}[/]")
+            console.print(f"\n[{Colors.ERROR_BOLD}]Error in chat: {e}[/]")
 
 
 @app.command()
@@ -1337,52 +1322,52 @@ def detect(
     detector = LanguageDetector(codebase_path)
     
     # Get detection summary
-    with console.status("[cyan]Analyzing codebase...", spinner="dots"):
+    with console.status(f"[{Colors.INFO}]Analyzing codebase...", spinner="dots"):
         summary = detector.get_detection_summary()
     
     # Display results
-    console.print(f"\n[bold]Codebase Analysis Results for:[/] {Path(codebase_path).resolve()}")
-    console.print(f"[bold]Primary Language:[/] [green]{summary['primary_language']}[/]")
-    console.print(f"[bold]Codebase Type:[/] [green]{summary['codebase_type']}[/]")
+    console.print(f"\n[{Colors.BOLD}]Codebase Analysis Results for:[/] {Path(codebase_path).resolve()}")
+    console.print(f"[{Colors.BOLD}]Primary Language:[/] [{Colors.SUCCESS}]{summary['primary_language']}[/]")
+    console.print(f"[{Colors.BOLD}]Codebase Type:[/] [{Colors.SUCCESS}]{summary['codebase_type']}[/]")
     
     # Show language breakdown
     if summary['languages']:
-        console.print("\n[bold]Languages Detected:[/]")
+        console.print(f"\n[{Colors.BOLD}]Languages Detected:[/]")
         for language, count in sorted(summary['languages'].items(), key=lambda x: x[1], reverse=True):
-            console.print(f"  • [cyan]{language}[/]: {count} files")
+            console.print(f"  • [{Colors.HIGHLIGHT}]{language}[/]: {count} files")
     
     # Show frameworks
     if summary['frameworks']:
-        console.print("\n[bold]Frameworks/Tools Detected:[/]")
+        console.print(f"\n[{Colors.BOLD}]Frameworks/Tools Detected:[/]")
         for framework in sorted(summary['frameworks']):
-            console.print(f"  • [yellow]{framework}[/]")
+            console.print(f"  • [{Colors.WARNING}]{framework}[/]")
     
     # Show pattern count
-    console.print(f"\n[bold]Recommended Ignore Patterns:[/] {summary['total_patterns']} patterns")
+    console.print(f"\n[{Colors.BOLD}]Recommended Ignore Patterns:[/] {summary['total_patterns']} patterns")
     
     # Show patterns if requested
     if show_patterns:
-        console.print("\n[bold]Generated Ignore Patterns:[/]")
+        console.print(f"\n[{Colors.BOLD}]Generated Ignore Patterns:[/]")
         for pattern in summary['ignore_patterns']:
             console.print(f"  {pattern}")
     else:
-        console.print("[dim]Use --show-patterns to see the full list[/]")
+        console.print(f"[{Colors.DIM}]Use --show-patterns to see the full list[/]")
     
     # Show recommendations
-    console.print("\n[bold]Recommendations:[/]")
+    console.print(f"\n[{Colors.BOLD}]Recommendations:[/]")
     if summary['total_patterns'] < 20:
-        console.print("  • [green]Lightweight pattern set - good for performance[/]")
+        console.print(f"  • [{Colors.SUCCESS}]Lightweight pattern set - good for performance[/]")
     elif summary['total_patterns'] > 50:
-        console.print("  • [yellow]Large pattern set - consider reviewing for optimization[/]")
+        console.print(f"  • [{Colors.WARNING}]Large pattern set - consider reviewing for optimization[/]")
     else:
-        console.print("  • [green]Balanced pattern set for your project type[/]")
+        console.print(f"  • [{Colors.SUCCESS}]Balanced pattern set for your project type[/]")
     
     if summary['codebase_type'] == "web_frontend":
-        console.print("  • [blue]Consider adding framework-specific build directories to .gitignore[/]")
+        console.print(f"  • [{Colors.INFO}]Consider adding framework-specific build directories to .gitignore[/]")
     elif summary['codebase_type'] == "python":
-        console.print("  • [blue]Virtual environment directories are automatically excluded[/]")
+        console.print(f"  • [{Colors.INFO}]Virtual environment directories are automatically excluded[/]")
     elif summary['codebase_type'] == "mobile":
-        console.print("  • [blue]Platform-specific build artifacts are excluded[/]")
+        console.print(f"  • [{Colors.INFO}]Platform-specific build artifacts are excluded[/]")
 
 
 @app.command()
@@ -1407,12 +1392,12 @@ def usage(
         session_summary = llm_tracker.get_session_summary()
         
         if "message" in session_summary:
-            console.print(f"[yellow]{session_summary['message']}[/]")
+            console.print(f"[{Colors.WARNING}]{session_summary['message']}[/]")
         else:
-            # Create LLM usage table
-            llm_table = Table(title="LLM Usage Summary", show_header=True, header_style="bold cyan")
-            llm_table.add_column("Metric", style="cyan")
-            llm_table.add_column("Value", justify="right", style="green")
+            # Create LLM usage table with semantic styling
+            llm_table = Table(title="LLM Usage Summary", show_header=True)
+            llm_table.add_column("Metric", style=Colors.HIGHLIGHT)
+            llm_table.add_column("Value", justify="right", style=Colors.SUCCESS)
             
             session_stats = session_summary.get("session_summary", {})
             llm_table.add_row("Total requests", str(session_stats.get("total_requests", 0)))
@@ -1428,13 +1413,13 @@ def usage(
                 by_provider = session_summary.get("by_provider", {})
                 
                 if by_provider:
-                    console.print("\n[bold]Breakdown by Provider:[/]")
-                    provider_table = Table(show_header=True, header_style="bold blue")
-                    provider_table.add_column("Provider", style="cyan")
+                    console.print(f"\n[{Colors.BOLD}]Breakdown by Provider:[/]")
+                    provider_table = Table(show_header=True)
+                    provider_table.add_column("Provider", style=Colors.HIGHLIGHT)
                     provider_table.add_column("Requests", justify="right")
                     provider_table.add_column("Input Tokens", justify="right")
                     provider_table.add_column("Output Tokens", justify="right")
-                    provider_table.add_column("Cost", justify="right", style="green")
+                    provider_table.add_column("Cost", justify="right", style=Colors.SUCCESS)
                     
                     for provider, stats in sorted(by_provider.items()):
                         provider_table.add_row(
@@ -1447,11 +1432,11 @@ def usage(
                     
                     console.print(provider_table)
     else:
-        console.print("[yellow]LLM usage tracking not available.[/]")
+        console.print(f"[{Colors.WARNING}]LLM usage tracking not available.[/]")
     
     # Show embedding usage information
-    console.print("\n[dim]Note: Embedding usage during ingestion is shown at the end of the ingestion process.[/]")
-    console.print("[dim]For current session embedding costs, check the output of 'docstra ingest'.[/]")
+    console.print(f"\n[{Colors.DIM}]Note: Embedding usage during ingestion is shown at the end of the ingestion process.[/]")
+    console.print(f"[{Colors.DIM}]For current session embedding costs, check the output of 'docstra ingest'.[/]")
 
 
 if __name__ == "__main__":

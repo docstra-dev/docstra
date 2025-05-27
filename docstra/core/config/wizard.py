@@ -14,6 +14,7 @@ from docstra.core.config.settings import (
     ModelProvider,
     UserConfig,
 )
+from docstra.core.utils.colors import Colors
 
 
 class ConfigScope(str, Enum):
@@ -335,9 +336,9 @@ class ConfigWizard:
         if isinstance(default, list):
             display_default = ",".join(str(x) for x in default)
 
-        # Show field description
-        self.console.print(f"\n[cyan]{field.name}[/]")
-        self.console.print(f"[dim]{field.description}[/]")
+        # Show field description with semantic colors
+        self.console.print(f"\n[{Colors.HIGHLIGHT}]{field.name}[/]")
+        self.console.print(f"[{Colors.DIM}]{field.description}[/]")
 
         # For sensitive fields, don't show the actual value
         if field.sensitive and default:
@@ -376,7 +377,7 @@ class ConfigWizard:
             try:
                 value = str(field.field_type(prompt_value))
             except (ValueError, TypeError):
-                self.console.print("[red]Invalid numeric value, using default.[/]")
+                self.console.print(f"[{Colors.ERROR}]Invalid numeric value, using default.[/]")
                 value = str(default)
         else:
             # For string fields and others
@@ -397,27 +398,27 @@ class ConfigWizard:
                 valid, message = bool(result), ""
             
             if not valid:
-                self.console.print(f"[red]Validation failed: {message}[/]")
+                self.console.print(f"[{Colors.ERROR_BOLD}]Validation failed: {message}[/]")
                 
                 # For model provider, offer alternatives
                 if field.path == "model.provider":
-                    self.console.print("\n[yellow]Available alternatives:[/]")
-                    self.console.print("  - [cyan]anthropic[/] (requires API key)")
-                    self.console.print("  - [cyan]openai[/] (requires API key)")
-                    self.console.print("  - [cyan]local[/] (requires local model)")
+                    self.console.print(f"\n[{Colors.WARNING}]Available alternatives:[/]")
+                    self.console.print(f"  - [{Colors.HIGHLIGHT}]anthropic[/] (requires API key)")
+                    self.console.print(f"  - [{Colors.HIGHLIGHT}]openai[/] (requires API key)")
+                    self.console.print(f"  - [{Colors.HIGHLIGHT}]local[/] (requires local model)")
                     
                     retry = Confirm.ask("Would you like to choose a different provider?", default=True)
                     if retry:
                         return self._prompt_for_field(field, scope)
                 
-                self.console.print(f"[yellow]Using default value: {default}[/]")
+                self.console.print(f"[{Colors.WARNING}]Using default value: {default}[/]")
                 value = str(default)
             else:
                 # Show validation message (could be success or warning)
                 if "Warning:" in message:
-                    self.console.print(f"[yellow]{message}[/]")
+                    self.console.print(f"[{Colors.WARNING}]{message}[/]")
                 else:
-                    self.console.print(f"[green]{message}[/]")
+                    self.console.print(f"[{Colors.SUCCESS}]{message}[/]")
 
         # Always return a string for value
         if isinstance(value, list):
@@ -488,19 +489,19 @@ class ConfigWizard:
             if f.scope in [scope, ConfigScope.BOTH] and f.advanced <= advanced
         ]
 
-        # Create a table of available fields
+        # Create a table of available fields with semantic styling
         table = Table(title=f"Available Configuration Fields ({scope.value})")
-        table.add_column("#", justify="right", style="cyan")
-        table.add_column("Field", style="green")
+        table.add_column("#", justify="right", style=Colors.HIGHLIGHT)
+        table.add_column("Field", style=Colors.SUCCESS)
         table.add_column("Description")
-        table.add_column("Current Value", style="yellow")
+        table.add_column("Current Value", style=Colors.WARNING)
 
         for i, field in enumerate(available_fields):
             current_value = self._get_field_default(field, scope)
 
             # Format display value
             if current_value is None:
-                display_value = "[dim]Not set[/]"
+                display_value = f"[{Colors.DIM}]Not set[/]"
             elif field.sensitive and current_value:
                 display_value = "********"
             elif isinstance(current_value, list):
@@ -531,7 +532,7 @@ class ConfigWizard:
                     if 0 <= idx < len(available_fields)
                 ]
             except (ValueError, IndexError):
-                self.console.print("[red]Invalid selection, please try again.[/]")
+                self.console.print(f"[{Colors.ERROR}]Invalid selection, please try again.[/]")
                 return self._select_fields_to_configure(all_fields, scope, advanced)
 
     def run_config_wizard(
@@ -555,7 +556,7 @@ class ConfigWizard:
             and not self.local_config_manager
         ):
             self.console.print(
-                "[yellow]No local project specified, can only configure global settings.[/]"
+                f"[{Colors.WARNING}]No local project specified, can only configure global settings.[/]"
             )
             scope = ConfigScope.GLOBAL
 
@@ -566,12 +567,12 @@ class ConfigWizard:
             )
 
         if not fields_to_configure:
-            self.console.print("[yellow]No fields selected for configuration.[/]")
+            self.console.print(f"[{Colors.WARNING}]No fields selected for configuration.[/]")
             return
 
         # Configure global settings
         if scope in [ConfigScope.GLOBAL, ConfigScope.BOTH]:
-            self.console.print("\n[bold]Global Configuration[/]")
+            self.console.print(f"\n[{Colors.BOLD}]Global Configuration[/]")
             global_fields = [
                 f
                 for f in fields_to_configure
@@ -585,11 +586,11 @@ class ConfigWizard:
                         self.global_config_manager, field, value
                     )
 
-            self.console.print("[green]Global configuration updated.[/]")
+            self.console.print(f"[{Colors.SUCCESS}]Global configuration updated.[/]")
 
         # Configure local settings
         if scope in [ConfigScope.LOCAL, ConfigScope.BOTH] and self.local_config_manager:
-            self.console.print("\n[bold]Local Project Configuration[/]")
+            self.console.print(f"\n[{Colors.BOLD}]Local Project Configuration[/]")
             local_fields = [
                 f
                 for f in fields_to_configure
@@ -603,14 +604,14 @@ class ConfigWizard:
                         self.local_config_manager, field, value
                     )
 
-            self.console.print("[green]Local configuration updated.[/]")
+            self.console.print(f"[{Colors.SUCCESS}]Local configuration updated.[/]")
 
     def run_init_wizard(self) -> None:
         """Run the initialization wizard for a new project."""
         self.console.print(Panel("Project Initialization Wizard", expand=False))
 
         if not self.local_config_manager:
-            self.console.print("[red]No local project specified, cannot initialize.[/]")
+            self.console.print(f"[{Colors.ERROR}]No local project specified, cannot initialize.[/]")
             return
 
         # Explain the wizard
@@ -629,7 +630,7 @@ class ConfigWizard:
 
         if not has_valid_global:
             self.console.print(
-                "[yellow]Global configuration is incomplete. Let's set it up first.[/]"
+                f"[{Colors.WARNING}]Global configuration is incomplete. Let's set it up first.[/]"
             )
             # Configure essential global settings
             essential_global_fields = [
@@ -640,7 +641,7 @@ class ConfigWizard:
             self.run_config_wizard(ConfigScope.GLOBAL, essential_global_fields)
 
         # Now configure local settings
-        self.console.print("\n[bold]Local Project Configuration[/]")
+        self.console.print(f"\n[{Colors.BOLD}]Local Project Configuration[/]")
         self.console.print("Let's configure your local project settings.")
 
         # Configure all local fields
@@ -657,13 +658,13 @@ class ConfigWizard:
                         self.local_config_manager, field, value
                     )
 
-        self.console.print("[green]Project initialized successfully![/]")
+        self.console.print(f"[{Colors.SUCCESS_BOLD}]Project initialized successfully![/]")
         self.console.print(
-            f"Local configuration saved to: [cyan]{self.local_config_manager.config_path}[/]"
+            f"Local configuration saved to: [{Colors.HIGHLIGHT}]{self.local_config_manager.config_path}[/]"
         )
 
         # Suggest next steps
-        self.console.print("\n[bold]Next steps:[/]")
+        self.console.print(f"\n[{Colors.BOLD}]Next steps:[/]")
         self.console.print("- Use 'docstra ingest .' to index your codebase")
         self.console.print("- Use 'docstra generate .' to generate documentation")
         self.console.print(
@@ -690,7 +691,7 @@ def run_config_wizard(
     try:
         config_scope = ConfigScope(scope.lower())
     except ValueError:
-        console.print(f"[red]Invalid scope: {scope}. Using 'both'.[/]")
+        console.print(f"[{Colors.ERROR}]Invalid scope: {scope}. Using 'both'.[/]")
         config_scope = ConfigScope.BOTH
 
     wizard = ConfigWizard(console, config_path, local_path)
@@ -737,14 +738,14 @@ def validate_model_provider(provider: str) -> Tuple[bool, str]:
             else:
                 # Allow selection but warn user
                 return True, (
-                    "Ollama selected (Warning: Ollama server not currently running. "
-                    "Start with 'ollama serve' before using docstra commands)"
+                    "Warning: Ollama server not currently running. "
+                    "Start with 'ollama serve' before using docstra commands"
                 )
         except Exception as e:
             # Allow selection but warn user
             return True, (
-                f"Ollama selected (Warning: Could not verify Ollama connection: {e}. "
-                "Ensure Ollama is installed and running before using docstra commands)"
+                f"Warning: Could not verify Ollama connection: {e}. "
+                "Ensure Ollama is installed and running before using docstra commands"
             )
     
     # For other providers, we assume they're valid (API keys will be validated later)
